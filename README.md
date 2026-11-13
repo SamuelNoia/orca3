@@ -1,7 +1,6 @@
-# Central de Orçamentos — Z Materiais
-
+# Central de Orçamentos
 Plataforma para montar orçamentos a partir das planilhas de vários fornecedores e
-gerar a planilha editável no layout da Z Materiais, pronta para impressão.
+gerar a planilha editável no layout, pronta para impressão.
 
 Roda **no seu computador ou em um servidor**, com **SQLite** (um único arquivo de
 banco) e **zero dependências externas** — não há `npm install`.
