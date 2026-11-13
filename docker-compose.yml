@@ -1,0 +1,47 @@
+services:
+  orcamentos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: zmateriais/orcamentos:1.0
+    container_name: orcamentos
+    restart: unless-stopped
+
+    ports:
+      # porta do host : porta interna do container
+      - "3088:3000"
+
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      NODE_ENV: production
+      # banco em arquivo unico dentro do volume
+      DATA_DIR: /app/data
+      # inicial = base zerada + 1 produto de teste | none = nada
+      SEED: inicial
+      # primeiro acesso (troque a senha depois de entrar)
+      ADMIN_EMAIL: admin@zmateriais.com.br
+      ADMIN_PASSWORD: admin123
+      TZ: America/Sao_Paulo
+
+    volumes:
+      # os dados ficam em ./data no computador que roda o container
+      - ./data:/app/data
+      # alternativa: volume gerenciado pelo Docker
+      # - dados:/app/data
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    # limites de recursos (ajuste conforme a maquina)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+# volumes:
+#   dados:

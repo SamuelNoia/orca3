@@ -1,0 +1,13 @@
+data
+node_modules
+.git
+.gitignore
+*.log
+*.db
+*.db-shm
+*.db-wal
+*.xlsx
+*.csv
+!package.json
+tests
+tools/_*

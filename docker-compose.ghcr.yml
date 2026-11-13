@@ -1,0 +1,43 @@
+# =====================================================================
+#  Central de Orcamentos - imagem pronta do GitHub Container Registry
+#
+#  Repositorio: https://github.com/SamuelNoia/orca3
+#  Imagem:      ghcr.io/samuelnoia/orca3:latest
+#
+#  A imagem ja contem todo o codigo: nao precisa construir nada
+#  nem copiar arquivos para o servidor.
+#
+#  Subir:   docker compose -f docker-compose.ghcr.yml up -d
+#  Logs:    docker compose -f docker-compose.ghcr.yml logs -f
+#  Parar:   docker compose -f docker-compose.ghcr.yml down
+# =====================================================================
+services:
+  orcamentos:
+    image: ghcr.io/samuelnoia/orca3:latest
+    container_name: orcamentos
+    restart: unless-stopped
+
+    ports:
+      - "3088:3000"
+
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATA_DIR: /app/data
+      NODE_ENV: production
+      TZ: America/Sao_Paulo
+      # inicial = base zerada + 1 produto de teste | none = vazio
+      SEED: inicial
+      ADMIN_EMAIL: admin@zmateriais.com.br
+      ADMIN_PASSWORD: admin123
+
+    volumes:
+      # unico volume necessario: o banco e os arquivos de trabalho
+      - /DATA/AppData/orcamentos/data:/app/data
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
