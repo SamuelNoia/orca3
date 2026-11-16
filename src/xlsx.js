@@ -418,9 +418,12 @@ export function buildXlsx(sheets, meta = {}) {
   const sheetEntries = [];
   const used = new Set();
 
+  const firstVisible = Math.max(0, sheets.findIndex((s) => !s.hidden));
+
   sheets.forEach((sheet, i) => {
     const name = safeSheetName(sheet.name, used);
-    const xml = sheetXml({ ...sheet, selected: sheet.selected ?? i === 0 });
+    const selected = sheet.hidden ? false : (sheet.selected ?? i === firstVisible);
+    const xml = sheetXml({ ...sheet, selected });
     files.push({ name: `xl/worksheets/sheet${i + 1}.xml`, data: xml });
     sheetEntries.push({ name, rid: `rId${i + 1}`, hidden: !!sheet.hidden, html: xml });
   });
@@ -435,7 +438,7 @@ export function buildXlsx(sheets, meta = {}) {
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <fileVersion appName="xl" lastEdited="7" lowestEdited="7" rupBuild="27126"/>
 <workbookPr defaultThemeVersion="166925"/>
-<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="16000" activeTab="0"/></bookViews>
+<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="16000" activeTab="${firstVisible}"/></bookViews>
 <sheets>${sheetEntries.map((s, i) => `<sheet name="${xmlEsc(s.name)}" sheetId="${i + 1}"${s.hidden ? ' state="hidden"' : ''} r:id="${s.rid}"/>`).join('')}</sheets>
 <calcPr calcId="171027" fullCalcOnLoad="1"/>
 </workbook>`,
