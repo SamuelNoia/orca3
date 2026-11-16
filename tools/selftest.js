@@ -183,12 +183,12 @@ async function main() {
   const novoCliente = await http.get('/clientes/novo');
   const c1 = await http.post('/clientes', {
     _csrf: tokenOf(novoCliente.text),
-    name: 'ISACI - INST. SUSTENTABILIDADE DA AMAZONIA',
-    cnpj: '51.798.925/0001-60',
-    ie: '75.091.198-0',
-    address: 'Ave Perimetral da Ciencia, SN, Belem - PA',
+    name: 'CLIENTE TESTE LTDA',
+    cnpj: '11.222.333/0001-44',
+    ie: '123.456.789',
+    address: 'Rua do Teste, 100 - Cidade',
     contact: 'Maria Silva',
-    phone: '(91) 99999-0000',
+    phone: '(00) 90000-0000',
   });
   ok('cliente criado', c1.status === 303, `status=${c1.status}`);
 
@@ -379,12 +379,12 @@ async function main() {
   ok('configuracoes abre', config.status === 200 && config.text.includes('Empresa emitente'));
   const salvarConfig = await http.post('/configuracoes', {
     _csrf: tokenOf(config.text),
-    app_name: 'Z Materiais - Central de Orcamentos',
-    name: 'Z MATERIAIS', legal_name: 'Z MATERIAL ELETRICO LTDA',
-    cnpj: '08.605.022/0001-97', ie: '15.283.872',
-    address: 'PA 160, Qd 06G, Lt 07 - Cidade Jardim, Parauapebas - PA',
-    contact: '(94) 99223-8524', email: 'zmateriaiseletricos@gmail.com',
-    bank_info: 'Banco do Brasil (001) | Agencia 3245-0 | Conta 107724-4',
+    app_name: 'Central de Orcamentos',
+    name: 'EMPRESA TESTE', legal_name: 'EMPRESA TESTE LTDA',
+    cnpj: '22.333.444/0001-55', ie: '987.654.321',
+    address: 'Avenida Teste, 200 - Cidade',
+    contact: '(00) 90000-1111', email: 'contato@teste.local',
+    bank_info: 'Banco Teste (000) | Agencia 0000-0 | Conta 00000-0',
     default_margin_pct: '60', default_margin_mode: 'markup',
     default_service_pct: '65', default_valid_days: '15',
   });

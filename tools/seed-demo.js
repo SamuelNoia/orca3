@@ -1,4 +1,4 @@
-// Carrega os dados do orcamento consolidado da Z Materiais para dentro da plataforma.
+// Carrega uma planilha de orcamento consolidado (aba CUSTOS) como base de demonstracao.
 // Uso:  node tools/seed-demo.js "caminho/da/planilha.xlsx" [--force]
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,9 +8,14 @@ import { readTable, toNumber, toText } from '../src/xlsx.js';
 import { computeQuote, round2 } from '../src/calc.js';
 import { updateQuoteTotals } from '../src/repo.js';
 
-const DEFAULT_FILE = 'C:\\Users\\SAMUEL\\Nextcloud\\SEGTEC\\PROJETOS-ESCOLAS-10-2026\\ORCAMENTO_CONSOLIDADO_ZMATERIAIS_ISACI_FINAL.xlsx';
-const file = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : DEFAULT_FILE;
+const file = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '';
 const force = process.argv.includes('--force');
+
+if (!file) {
+  console.error('Informe o caminho da planilha:');
+  console.error('  node tools/seed-demo.js "C:\\\\caminho\\\\planilha.xlsx"');
+  process.exit(1);
+}
 
 if (!fs.existsSync(file)) {
   console.error(`Planilha nao encontrada: ${file}`);
@@ -19,9 +24,9 @@ if (!fs.existsSync(file)) {
 
 openDb(DB_FILE);
 
-const jaTem = get("SELECT id FROM suppliers WHERE name = 'Z MATERIAIS'");
+const jaTem = get("SELECT id FROM suppliers WHERE name = 'EMPRESA EXEMPLO'");
 if (jaTem && !force) {
-  console.log('A base inicial ja foi carregada. Use --force para carregar de novo.');
+  console.log('A base de demonstracao ja foi carregada. Use --force para carregar de novo.');
   process.exit(0);
 }
 const table = readTable(fs.readFileSync(file), path.basename(file));
@@ -68,14 +73,14 @@ const resultado = tx(() => {
   const fornecedor = run(
     `INSERT INTO suppliers (name, legal_name, cnpj, ie, address, contact, email, bank_info, is_own, active, created_at)
      VALUES (?,?,?,?,?,?,?,?,1,1,?)`,
-    'Z MATERIAIS',
-    'Z MATERIAL ELETRICO LTDA',
-    '08.605.022/0001-97',
-    '15.283.872',
-    'PA 160, Qd 06G, Lt 07 - Cidade Jardim, Parauapebas - PA',
-    '(94) 99223-8524 / 2123-0008 | zmateriaiseletricos@gmail.com',
-    'zmateriaiseletricos@gmail.com',
-    'Banco do Brasil (001)  |  Agência: 3245-0  |  Conta Corrente: 107724-4',
+    'EMPRESA EXEMPLO',
+    'EMPRESA EXEMPLO LTDA',
+    '00.000.000/0001-00',
+    '',
+    'Rua Exemplo, 100 - Cidade',
+    '(00) 00000-0000 | contato@exemplo.com',
+    'contato@exemplo.com',
+    'Banco Exemplo (000)  |  Agência: 0000-0  |  Conta Corrente: 00000-0',
     nowIso(),
   );
   const supplierId = fornecedor.lastId;
@@ -83,18 +88,18 @@ const resultado = tx(() => {
   const cliente = run(
     `INSERT INTO clients (name, cnpj, ie, address, contact, active, created_at)
      VALUES (?,?,?,?,?,1,?)`,
-    'ISACI - INST. SUSTENTABILIDADE DA AMAZONIA COM CIENCIA E INOVACAO',
-    '51.798.925/0001-60',
-    '75.091.198-0',
-    'Ave Perimetral da Ciencia, SN, Andar 3 Sala 9 - Belém - PA',
-    'Diretoria ISACI',
+    'CLIENTE EXEMPLO',
+    '00.000.000/0002-00',
+    '',
+    'Avenida do Cliente, 200 - Cidade',
+    'Contato do Cliente',
     nowIso(),
   );
   const clientId = cliente.lastId;
 
   const projeto = run(
     'INSERT INTO projects (client_id, name, code, created_at) VALUES (?,?,?,?)',
-    clientId, 'Projetos Escolas 10/2026', 'ESCOLAS-10-2026', nowIso(),
+    clientId, 'Projetos Exemplo', 'EXEMPLO-01', nowIso(),
   );
   const projectId = projeto.lastId;
 

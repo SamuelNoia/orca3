@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: zmateriais/orcamentos:1.0
+    image: central-orcamentos:local
     container_name: orcamentos
     restart: unless-stopped
 
@@ -19,9 +19,11 @@ services:
       DATA_DIR: /app/data
       # inicial = base zerada + 1 produto de teste | none = nada
       SEED: inicial
-      # primeiro acesso (troque a senha depois de entrar)
-      ADMIN_EMAIL: admin@zmateriais.com.br
-      ADMIN_PASSWORD: admin123
+      # primeiro acesso: a senha e gerada automaticamente na 1a execucao
+      # e gravada em ./data/PRIMEIRO_ACESSO.txt (e no log do container)
+      ADMIN_EMAIL: admin@empresa.local
+      # descomente para definir uma senha fixa em vez da aleatoria
+      # ADMIN_PASSWORD: troque-esta-senha
       TZ: America/Sao_Paulo
 
     volumes:

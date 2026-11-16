@@ -5,7 +5,7 @@ FROM node:24-alpine
 # Se o node:sqlite nao estiver disponivel nesta variante, troque a linha acima por:
 # FROM node:24-slim
 
-LABEL org.opencontainers.image.title="Central de Orcamentos Z Materiais" \
+LABEL org.opencontainers.image.title="Central de Orcamentos" \
       org.opencontainers.image.description="Orcamentos multi-fornecedor com SQLite e exportacao XLSX" \
       org.opencontainers.image.version="1.0"
 

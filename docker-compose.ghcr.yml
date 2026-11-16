@@ -28,8 +28,11 @@ services:
       TZ: America/Sao_Paulo
       # inicial = base zerada + 1 produto de teste | none = vazio
       SEED: inicial
-      ADMIN_EMAIL: admin@zmateriais.com.br
-      ADMIN_PASSWORD: admin123
+      # primeiro acesso: a senha e gerada automaticamente na 1a execucao
+      # e gravada em /DATA/AppData/orcamentos/data/PRIMEIRO_ACESSO.txt
+      ADMIN_EMAIL: admin@empresa.local
+      # descomente para definir uma senha fixa em vez da aleatoria
+      # ADMIN_PASSWORD: troque-esta-senha
 
     volumes:
       # unico volume necessario: o banco e os arquivos de trabalho

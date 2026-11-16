@@ -21,8 +21,9 @@ NOME="${NOME:-orcamentos}"
 PORT="${PORT:-3088}"
 TZ="${TZ:-America/Sao_Paulo}"
 SEED="${SEED:-inicial}"
-ADMIN_EMAIL="${ADMIN_EMAIL:-admin@zmateriais.com.br}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin123}"
+ADMIN_EMAIL="${ADMIN_EMAIL:-admin@empresa.local}"
+# senha vazia = o sistema gera uma aleatoria na primeira execucao
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 
 # pasta de dados: usa o padrao do CasaOS/ZimaOS quando existir
 if [ -z "${DATA_DIR:-}" ]; then
@@ -105,6 +106,12 @@ fi
 IP_LOCAL=$(hostname -I 2>/dev/null | awk '{print $1}')
 [ -n "${IP_LOCAL:-}" ] || IP_LOCAL="IP-DO-SERVIDOR"
 
+# se nao foi definida senha, pega a que o sistema gerou na primeira execucao
+if [ -z "$ADMIN_PASSWORD" ] && [ -f "$DATA_DIR/PRIMEIRO_ACESSO.txt" ]; then
+  ADMIN_PASSWORD=$(sed -n 's/^Senha:[[:space:]]*//p' "$DATA_DIR/PRIMEIRO_ACESSO.txt" | head -n 1)
+fi
+[ -n "$ADMIN_PASSWORD" ] || ADMIN_PASSWORD="(veja: docker logs $NOME)"
+
 cat <<FIM
 
 =====================================================================
@@ -125,5 +132,6 @@ cat <<FIM
     docker stop ${NOME}          parar
 
   TROQUE A SENHA no primeiro acesso (Usuarios > Administrador).
+  Depois apague ${DATA_DIR}/PRIMEIRO_ACESSO.txt
 =====================================================================
 FIM

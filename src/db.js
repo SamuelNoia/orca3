@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS suppliers (
   email      TEXT,
   phone      TEXT,
   bank_info  TEXT,
-  is_own     INTEGER NOT NULL DEFAULT 0,           -- 1 = empresa emitente (Z Materiais)
+  is_own     INTEGER NOT NULL DEFAULT 0,           -- 1 = empresa emitente da proposta
   active     INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   updated_at TEXT
@@ -195,12 +195,12 @@ CREATE TABLE IF NOT EXISTS audit_log (
 `;
 
 export const DEFAULTS = {
-  app_name: 'Z Materiais - Central de Orcamentos',
+  app_name: 'Central de Orcamentos',
   default_margin_pct: '60',
   default_margin_mode: 'markup',
   default_service_pct: '65',
   default_valid_days: '15',
-  company_short: 'Z MATERIAIS ELETRICOS',
+  company_short: 'EMPRESA EXEMPLO',
 };
 
 let _db = null;

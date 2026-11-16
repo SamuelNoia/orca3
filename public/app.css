@@ -59,7 +59,10 @@ a:hover { text-decoration: underline; }
   flex: none;
 }
 .brand-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
-.brand-text strong { font-size: 13px; letter-spacing: .02em; }
+.brand-text strong {
+  font-size: 13px; letter-spacing: .02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .brand-text small { font-size: 10.5px; opacity: .7; text-transform: uppercase; letter-spacing: .06em; }
 
 .sidebar nav { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; }

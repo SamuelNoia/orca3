@@ -28,8 +28,11 @@ services:
       DATA_DIR: /app/data
       NODE_ENV: production
       TZ: America/Sao_Paulo
-      ADMIN_EMAIL: admin@zmateriais.com.br
-      ADMIN_PASSWORD: admin123
+      # primeiro acesso: a senha e gerada automaticamente na 1a execucao
+      # e gravada em /DATA/AppData/orcamentos/data/PRIMEIRO_ACESSO.txt
+      ADMIN_EMAIL: admin@empresa.local
+      # descomente para definir uma senha fixa em vez da aleatoria
+      # ADMIN_PASSWORD: troque-esta-senha
 
     working_dir: /app
 

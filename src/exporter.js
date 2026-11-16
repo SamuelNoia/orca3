@@ -1,4 +1,4 @@
-// Gera a planilha de orcamento no layout da Z Materiais:
+// Gera a planilha de orcamento no layout padrao da empresa:
 //   - aba CUSTOS (tabela de precos base, interna)
 //   - uma aba por orcamento/unidade, com formulas reais e editaveis
 //   - aba RESUMO CONSOLIDADO quando ha mais de um orcamento

@@ -1,7 +1,7 @@
-# Central de Orçamentos — Z Materiais
+# Central de Orçamentos
 
 Plataforma para montar orçamentos a partir das planilhas de vários fornecedores e
-gerar a planilha editável no layout da Z Materiais, pronta para impressão.
+gerar a planilha editável no layout da sua empresa, pronta para impressão.
 
 Roda **no seu computador ou em um servidor**, com **SQLite** (um único arquivo de
 banco) e **zero dependências externas** — não há `npm install`.
@@ -96,7 +96,7 @@ Use esta opção apenas se **não** quiser publicar a imagem no GitHub.
 **Use o arquivo `docker-compose.casaos.yml`, não o `docker-compose.yml`.**
 
 O motivo: o CasaOS **não executa `build:`** — ele só baixa imagens prontas de um
-registry. O `docker-compose.yml` tem `image: zmateriais/orcamentos:1.0` + `build:`,
+registry. O `docker-compose.yml` tem `image: central-orcamentos:local` + `build:`,
 que funciona com `docker compose up --build` numa máquina com Docker, mas essa
 imagem nunca foi publicada. Ao importar no CasaOS aparece:
 
@@ -136,7 +136,7 @@ node tools/gerar-pacote.js
 ```
 
 > **Alternativa:** se preferir uma imagem própria, construa no servidor via SSH
-> (`docker build -t zmateriais/orcamentos:1.0 .`) ou publique no Docker Hub/GHCR e
+> (`docker build -t central-orcamentos:local .`) ou publique no Docker Hub/GHCR e
 > aí sim use o `docker-compose.yml` original.
 
 ### No Windows, sem Docker
@@ -156,15 +156,22 @@ set PORT=3001 && node server.js     :: outra porta
 
 ### Primeiro acesso
 
-| Campo | Valor padrão |
+| Campo | Valor |
 |---|---|
-| E-mail | `admin@zmateriais.com.br` |
-| Senha  | `admin123` |
+| E-mail | `admin@empresa.local` (definido em `ADMIN_EMAIL`) |
+| Senha  | **gerada automaticamente** na primeira execução |
 
-Essas credenciais vêm das variáveis `ADMIN_EMAIL` e `ADMIN_PASSWORD` (no
-`docker-compose.yml` ou no ambiente). **Troque a senha** em *Usuários →
-Administrador* no primeiro uso. Se o arquivo `data/PRIMEIRO_ACESSO.txt` existir,
-ele tem as credenciais criadas.
+Não existe senha fixa. Na primeira subida o sistema cria o administrador com uma
+senha aleatória de 16 caracteres e a grava em:
+
+- `data/PRIMEIRO_ACESSO.txt` (no volume de dados)
+- no log do container: `docker logs orcamentos`
+
+Para usar uma senha sua, defina `ADMIN_PASSWORD` antes de subir (descomente no
+`docker-compose.yml` ou use `ADMIN_PASSWORD=... sh instalar.sh`).
+
+**Troque a senha** em *Usuários → Administrador* e depois apague o
+`PRIMEIRO_ACESSO.txt`.
 
 ---
 
@@ -184,12 +191,15 @@ Para recarregar esse estado:
 npm run seed:reset          # ou: node tools/seed-inicial.js --force
 ```
 
-Para carregar a base de demonstração completa (as 3 escolas da ISACI, a partir da
-planilha original):
+Para carregar uma base de demonstração a partir de uma planilha de orçamento
+consolidado (aba `CUSTOS`):
 
 ```bash
-node tools/seed-demo.js "C:\caminho\ORCAMENTO_CONSOLIDADO_ZMATERIAIS_ISACI_FINAL.xlsx"
+node tools/seed-demo.js "C:\caminho\planilha.xlsx"
 ```
+
+O script cria a empresa emitente e o cliente com dados genéricos (`EMPRESA
+EXEMPLO` / `CLIENTE EXEMPLO`) e um orçamento por escola encontrada na planilha.
 
 No Docker, defina `SEED` no `docker-compose.yml`:
 
@@ -241,7 +251,7 @@ Clientes → Projeto → Orçamento → itens + margem + despesas → planilha X
 ### 1. Fornecedores e catálogo
 
 Em **Fornecedores → Novo fornecedor** cadastre cada empresa que manda preço.
-Marque como **“empresa emitente”** aquela que assina a proposta (a Z Materiais).
+Marque como **“empresa emitente”** aquela que assina a proposta (a sua empresa).
 
 Em **Enviar planilha** você anexa o arquivo do fornecedor. O sistema:
 
@@ -296,9 +306,8 @@ já pronto.
   em `D7`, itens com `=CUSTOS!E4*(1+$D$7)`, serviço, despesas e total;
 - aba **RESUMO CONSOLIDADO** quando há mais de um orçamento.
 
-As cores, fontes, larguras, mesclagens e formatos seguem o arquivo
-`ORCAMENTO_CONSOLIDADO_ZMATERIAIS_ISACI_FINAL.xlsx`. Há um exemplo do resultado em
-`exemplo_gerado.xlsx`.
+As cores, fontes, larguras, mesclagens e formatos seguem o modelo de planilha da
+empresa.
 
 **Consolidado do projeto:** em *Projetos → Planilha consolidada*, todas as unidades
 saem em um único arquivo, como no modelo.
@@ -361,13 +370,13 @@ orcamentos/
 │   ├── modelo.js                   planilha modelo para fornecedores
 │   ├── importer.js                 detecção de colunas e importação
 │   ├── calc.js                     motor de margem, despesas e serviço
-│   ├── exporter.js                 planilha no layout Z Materiais
+│   ├── exporter.js                 planilha no layout da empresa
 │   ├── repo.js                     consultas de dados
 │   ├── ui.js                       componentes de tela
 │   └── routes/                     telas: auth, admin, catalog, quotes
 └── tools/
     ├── seed-inicial.js             base zerada + 1 produto de teste
-    ├── seed-demo.js                carrega as 3 escolas da ISACI
+    ├── seed-demo.js                carrega uma planilha consolidada como demonstração
     ├── gerar-modelo.js             gera a planilha modelo
     ├── gerar-pacote.js             gera o pacote-casaos.zip
     └── selftest.js                 teste de ponta a ponta (86 verificações)

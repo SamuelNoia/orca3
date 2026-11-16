@@ -8,7 +8,7 @@ import { esc, field, button, csrfField, flash } from '../ui.js';
 function loginPage(ctx, { error = '', email = '', next = '' } = {}) {
   const body = `<div class="login-wrap">
   <div class="login-card">
-    <div class="brand-mark">Z</div>
+    <div class="brand-mark">CO</div>
     <h1>Central de Orçamentos</h1>
     <p class="sub">Acesse com seu e-mail corporativo</p>
     ${error ? `<div class="flash bad">${esc(error)}</div>` : ''}

@@ -64,8 +64,8 @@ export function layout(ctx, { title, body, wide = false, bare = false }) {
 <body class="${wide ? 'wide' : ''}">
 ${bare ? '' : `<aside class="sidebar">
   <div class="brand">
-    <div class="brand-mark">Z</div>
-    <div class="brand-text"><strong>${esc(appName.split('-')[0].trim())}</strong><small>Central de Orçamentos</small></div>
+    <div class="brand-mark">CO</div>
+    <div class="brand-text"><strong>${esc(appName)}</strong><small>Painel de gestão</small></div>
   </div>
   <nav>${nav}</nav>
   <div class="sidebar-foot">

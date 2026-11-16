@@ -2,6 +2,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { DATA_DIR, DB_FILE, PUBLIC_DIR, PORT, HOST, TMP_DIR } from './src/config.js';
 import { openDb, get, run, nowIso, setting } from './src/db.js';
 import { hashPassword, sessionUser, purgeExpiredSessions, checkCsrf } from './src/auth.js';
@@ -21,22 +22,36 @@ function bootstrapAdmin() {
   const count = Number(get('SELECT COUNT(*) AS n FROM users')?.n || 0);
   if (count > 0) return;
 
-  const email = process.env.ADMIN_EMAIL || 'admin@zmateriais.com.br';
-  const password = process.env.ADMIN_PASSWORD || 'admin123';
+  const email = process.env.ADMIN_EMAIL || 'admin@empresa.local';
+  // sem senha definida, gera uma aleatoria por instalacao (nunca uma senha fixa)
+  const password = process.env.ADMIN_PASSWORD || crypto.randomBytes(12).toString('base64url');
+
   run(
     'INSERT INTO users (name, email, password_hash, role, active, created_at) VALUES (?,?,?,?,1,?)',
     'Administrador', email, hashPassword(password), 'admin', nowIso(),
   );
-  const note = `Primeiro acesso criado\n\nE-mail: ${email}\nSenha:  ${password}\n\nTroque a senha em Usuarios > Administrador apos entrar.\n`;
-  try {
-    fs.writeFileSync(path.join(DATA_DIR, 'PRIMEIRO_ACESSO.txt'), note, 'utf8');
-  } catch { /* ignore */ }
-  console.log('\n' + '='.repeat(58));
+
+  const arquivo = path.join(DATA_DIR, 'PRIMEIRO_ACESSO.txt');
+  const note = [
+    'Primeiro acesso criado',
+    '',
+    `E-mail: ${email}`,
+    `Senha:  ${password}`,
+    '',
+    'Troque a senha em Usuarios > Administrador apos entrar.',
+    'Apague este arquivo depois de guardar a senha.',
+    '',
+  ].join('\n');
+
+  try { fs.writeFileSync(arquivo, note, 'utf8'); } catch { /* ignore */ }
+
+  console.log('\n' + '='.repeat(64));
   console.log('  PRIMEIRO ACESSO CRIADO');
   console.log(`  E-mail: ${email}`);
   console.log(`  Senha:  ${password}`);
+  console.log(`  Tambem salvo em: ${arquivo}`);
   console.log('  Troque a senha apos o primeiro login.');
-  console.log('='.repeat(58) + '\n');
+  console.log('='.repeat(64) + '\n');
 }
 
 function cleanTmp() {
