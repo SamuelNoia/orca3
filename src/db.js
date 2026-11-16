@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS quote_items (
   description TEXT NOT NULL,
   qty         REAL NOT NULL DEFAULT 1,
   unit_cost   REAL NOT NULL DEFAULT 0,
+  price_override REAL,
   product_id  INTEGER,
   supplier_id INTEGER,
   unit        TEXT DEFAULT 'UN',
@@ -216,8 +217,19 @@ export function openDb(file) {
   database.exec('PRAGMA busy_timeout = 5000;');
   database.exec(SCHEMA);
   _db = database;
+  migrate();
   seedDefaults();
   return database;
+}
+
+/** Ajustes de schema para bancos criados em versoes anteriores. */
+function migrate() {
+  const colunas = (tabela) => {
+    try { return all(`PRAGMA table_info(${tabela})`).map((c) => c.name); } catch { return []; }
+  };
+  if (!colunas('quote_items').includes('price_override')) {
+    try { exec('ALTER TABLE quote_items ADD COLUMN price_override REAL'); } catch { /* ja existe */ }
+  }
 }
 
 export function db() {

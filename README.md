@@ -267,6 +267,12 @@ são problema.
 Dois modos: **atualizar** (mantém o que existe e atualiza preços) ou
 **substituir** todo o catálogo.
 
+Além da planilha, o catálogo aceita manutenção manual:
+
+- **Novo produto** — cadastra um item sem planilha, escolhendo o fornecedor;
+- **Editar** — corrige descrição, preço, marca, estoque, EAN, NCM e os demais campos;
+- **Excluir** — desativa o item sem apagar o histórico de orçamentos.
+
 ### 2. Comparação entre fornecedores
 
 Ao adicionar um produto ao orçamento, o sistema procura o **mesmo item nos outros
@@ -284,9 +290,17 @@ fornecedores** (por EAN, código do fabricante ou referência) e monta as oferta
 |---|---|
 | **Margem (%)** | acréscimo sobre o custo |
 | **Forma de cálculo** | *markup* (custo × (1+m)) ou *margem sobre a venda* (custo ÷ (1−m)) |
-| **Serviço de instalação (%)** | percentual sobre o total de produtos (0 = sem serviço) |
+| **Serviço de instalação (%)** | percentual sobre o total de produtos. **0 = orçamento sem serviço** (a linha não aparece na planilha nem no PDF) |
 | **Arredondar preço** | sobe o preço para o próximo múltiplo (ex.: R$ 0,10) |
 | **Validade** | dias, usado no texto da proposta |
+
+**Preço de venda por item:** na coluna *Preço venda* você pode digitar o valor
+final. O campo em branco usa a margem; um valor digitado tem prioridade e vale
+só para aquela linha (o custo e o lucro continuam sendo calculados).
+
+**Fornecedores misturados:** cada linha do orçamento tem o seu próprio fornecedor.
+Dá para montar uma proposta única juntando itens de empresas diferentes — o custo
+de cada item vem do fornecedor escolhido naquela linha.
 
 **Outras despesas** entram como percentual ou valor fixo, e podem incidir sobre
 *produtos*, *serviços* ou o *total acumulado*. Valor negativo funciona como desconto.
@@ -312,7 +326,13 @@ empresa.
 **Consolidado do projeto:** em *Projetos → Planilha consolidada*, todas as unidades
 saem em um único arquivo, como no modelo.
 
-**Imprimir** abre uma versão limpa para papel.
+### 5. PDF para o cliente
+
+**PDF / Imprimir** abre a proposta já formatada em A4. No diálogo de impressão
+escolha **Salvar como PDF** — o resultado é o documento pronto para enviar ao
+cliente, com cabeçalho da empresa, itens, totais, observações e dados bancários.
+
+A linha de serviço só aparece se o percentual de serviço for maior que zero.
 
 ---
 

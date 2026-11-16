@@ -405,6 +405,79 @@ async function main() {
   const editor4 = await http.get(`/orcamentos/${orcId}`);
   ok('modo margem sobre venda aplicado', editor4.text.includes('Margem sobre a venda') || editor4.text.includes('margin'));
 
+  section('Catalogo: criar e editar produto');
+  const novoProd = await http.get('/produtos/novo');
+  ok('formulario de novo produto abre', novoProd.status === 200 && novoProd.text.includes('Novo produto'));
+  const criarProd = await http.post('/produtos', {
+    _csrf: tokenOf(novoProd.text),
+    supplier_id: idAlfa,
+    description: 'PRODUTO CRIADO NA TELA',
+    unit_price: '123,45',
+    brand: 'TESTE',
+    stock: '7',
+    unit: 'UN',
+  });
+  ok('produto criado pela tela', criarProd.status === 303, `status=${criarProd.status}`);
+
+  const buscaProd = await http.get('/produtos?q=CRIADO');
+  ok('produto aparece no catalogo', buscaProd.text.includes('PRODUTO CRIADO NA TELA'));
+  ok('preco gravado corretamente', buscaProd.text.includes('123,45'), '');
+  const novoProdId = Number((/\/produtos\/(\d+)\/editar/.exec(buscaProd.text) || [])[1] || 0);
+  ok('link de edicao presente', novoProdId > 0, `id=${novoProdId}`);
+
+  const formEditar = await http.get(`/produtos/${novoProdId}/editar`);
+  ok('formulario de edicao abre', formEditar.status === 200 && formEditar.text.includes('PRODUTO CRIADO NA TELA'));
+  const salvarProd = await http.post(`/produtos/${novoProdId}`, {
+    _csrf: tokenOf(formEditar.text),
+    supplier_id: idAlfa,
+    description: 'PRODUTO CRIADO NA TELA (EDITADO)',
+    unit_price: '200,00',
+    brand: 'TESTE2',
+    stock: '9',
+    unit: 'UN',
+  });
+  ok('produto editado', salvarProd.status === 303);
+  const buscaProd2 = await http.get('/produtos?q=EDITADO');
+  ok('edicao refletida no catalogo',
+    buscaProd2.text.includes('PRODUTO CRIADO NA TELA (EDITADO)') && buscaProd2.text.includes('200,00'));
+
+  section('Preco de venda manual no orcamento');
+  const edManual = await http.get(`/orcamentos/${orcId}`);
+  const itemAlvo = Number((/name="q(\d+)"/.exec(edManual.text) || [])[1] || 0);
+  ok('item identificado para edicao', itemAlvo > 0, `id=${itemAlvo}`);
+  const salvarPreco = await http.post(`/orcamentos/${orcId}/itens/salvar`, {
+    _csrf: tokenOf(edManual.text),
+    [`p${itemAlvo}`]: '999,99',
+  });
+  ok('preco manual salvo', salvarPreco.status === 303, `status=${salvarPreco.status}`);
+  const edManual2 = await http.get(`/orcamentos/${orcId}`);
+  ok('preco manual aparece no editor', edManual2.text.includes('999,99'));
+
+  const xManual = await http.get(`/orcamentos/${orcId}/exportar.xlsx`);
+  const wbManual = readTable(xManual.buffer, 'm.xlsx');
+  const shManual = wbManual.sheets.find((s) => s.name.startsWith('Orçamento'));
+  const temPrecoManual = shManual.rows.some(
+    (r) => r && r.some((c) => typeof c === 'number' && Math.abs(c - 999.99) < 0.01),
+  );
+  ok('planilha gerada com o preco manual', xManual.status === 200 && temPrecoManual);
+
+  section('Orcamento sem servico');
+  const semServico = await http.post(`/orcamentos/${orcId}/parametros`, {
+    _csrf: tokenOf(edManual2.text),
+    margin_pct: '60', margin_mode: 'markup', service_pct: '0',
+    rounding: '0', valid_days: '15', status: 'draft',
+  });
+  ok('parametros sem servico salvos', semServico.status === 303);
+
+  const xSemSvc = await http.get(`/orcamentos/${orcId}/exportar.xlsx`);
+  const wbSemSvc = readTable(xSemSvc.buffer, 's.xlsx');
+  const shSemSvc = wbSemSvc.sheets.find((s) => s.name.startsWith('Orçamento'));
+  const temLinhaServico = shSemSvc.rows.some((r) => r && String(r[0] || '').startsWith('SERV'));
+  ok('planilha sem linha de servico', !temLinhaServico);
+
+  const printSemSvc = await http.get(`/orcamentos/${orcId}/imprimir`);
+  ok('impressao sem linha de servico', !printSemSvc.text.includes('Serviço de instalação'));
+
   section('Planilha modelo');
   const modelo = await http.get('/modelo-importacao.xlsx');
   ok('modelo .xlsx disponivel', modelo.status === 200 && modelo.buffer[0] === 0x50, `status=${modelo.status}`);

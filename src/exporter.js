@@ -147,40 +147,47 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
       if (Number(q.rounding) > 0) formula = `CEILING(${formula},${Number(q.rounding)})`;
 
       const line = c.lines[i];
+      const manual = line?.manual_price === true;
       push([
         { v: it.internal_code || it.ean || it.reference || '', s: 'center' },
         { v: it.description, s: 'cell' }, null,
         { v: Number(it.qty) || 0, s: 'qty' },
-        { v: money(line?.unit_price ?? 0), s: 'money', f: formula },
+        manual
+          ? { v: money(line?.unit_price ?? 0), s: 'money' }
+          : { v: money(line?.unit_price ?? 0), s: 'money', f: formula },
         { v: money(line?.line_total ?? 0), s: 'money', f: `D${rowNum}*E${rowNum}` },
       ], 16.05);
       merges.push(`B${rowNum}:C${rowNum}`);
     });
     const lastItemRow = R.length;
 
-    const svcRow = R.length + 1;
-    push([
-      { v: q.service_code || 'SERV-01', s: 'center' },
-      { v: q.service_description || 'SERVIÇO ESPECIALIZADO DE INSTALAÇÃO E MONTAGEM TÉCNICA', s: 'boldText' }, null,
-      { v: 1, s: 'qty' },
-      {
-        v: money(c.serviceValue),
-        s: 'boldMoney',
-        ...(c.servicePct ? { f: `SUM(F${firstItemRow}:F${lastItemRow})*${c.servicePct / 100}` } : {}),
-      },
-      { v: money(c.serviceValue), s: 'boldMoney', f: `D${svcRow}*E${svcRow}` },
-    ], 18);
-    merges.push(`B${svcRow}:C${svcRow}`);
+    // servico de instalacao (opcional: sem percentual, a linha nao existe)
+    let svcRow = null;
+    if (c.servicePct > 0) {
+      svcRow = R.length + 1;
+      push([
+        { v: q.service_code || 'SERV-01', s: 'center' },
+        { v: q.service_description || 'SERVIÇO ESPECIALIZADO DE INSTALAÇÃO E MONTAGEM TÉCNICA', s: 'boldText' }, null,
+        { v: 1, s: 'qty' },
+        {
+          v: money(c.serviceValue),
+          s: 'boldMoney',
+          f: `SUM(F${firstItemRow}:F${lastItemRow})*${c.servicePct / 100}`,
+        },
+        { v: money(c.serviceValue), s: 'boldMoney', f: `D${svcRow}*E${svcRow}` },
+      ], 18);
+      merges.push(`B${svcRow}:C${svcRow}`);
+    }
 
     const expenseRows = [];
     for (const e of block.expenses) {
       const rowNum = R.length + 1;
       const pct = Number(e.value) || 0;
-      let formula;
+      let formula = null;
       if (e.kind === 'fixed') {
         formula = String(pct);
       } else if (e.base === 'services') {
-        formula = `F${svcRow}*${pct / 100}`;
+        formula = svcRow ? `F${svcRow}*${pct / 100}` : null;
       } else if (e.base === 'total') {
         formula = `SUM(F${firstItemRow}:F${rowNum - 1})*${pct / 100}`;
       } else {
@@ -193,7 +200,9 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
         { v: '', s: 'center' },
         { v: label, s: 'boldText' }, null,
         { v: 1, s: 'qty' },
-        { v: money(e.amount), s: 'boldMoney', f: formula },
+        formula
+          ? { v: money(e.amount), s: 'boldMoney', f: formula }
+          : { v: money(e.amount), s: 'boldMoney' },
         { v: money(e.amount), s: 'boldMoney', f: `D${rowNum}*E${rowNum}` },
       ], 16.05);
       merges.push(`B${rowNum}:C${rowNum}`);
@@ -327,7 +336,9 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
         { v: i + 1, s: 'center' },
         { v: block.quote.title || '', s: 'cell' },
         { v: money(block.calc.productsTotal), s: 'money', f: `SUM(${ref}!F${firstItemRow}:F${lastItemRow})` },
-        { v: money(block.calc.serviceValue), s: 'money', f: `${ref}!F${svcRow}` },
+        svcRow
+          ? { v: money(block.calc.serviceValue), s: 'money', f: `${ref}!F${svcRow}` }
+          : { v: 0, s: 'money' },
         expFormula ? { v: expValue, s: 'money', f: expFormula } : { v: expValue, s: 'money' },
         { v: money(block.calc.total), s: 'money', f: `${ref}!F${totalRow}` },
       ], 18);

@@ -53,7 +53,12 @@ export function computeQuote(quote, items = [], expenses = []) {
   const lines = items.map((it, i) => {
     const qty = Number(it.qty) || 0;
     const cost = Number(it.unit_cost) || 0;
-    const unit = unitPriceFor(cost, marginPct, marginMode, rounding);
+    // preco de venda digitado a mao tem prioridade sobre a margem
+    const override = it.price_override !== null && it.price_override !== undefined
+      && Number(it.price_override) > 0
+      ? Number(it.price_override)
+      : null;
+    const unit = override !== null ? round2(override) : unitPriceFor(cost, marginPct, marginMode, rounding);
     const total = round2(qty * unit);
     costTotal += qty * cost;
     return {
@@ -63,6 +68,7 @@ export function computeQuote(quote, items = [], expenses = []) {
       line_total: total,
       line_cost: round2(qty * cost),
       margin_value: round2(total - qty * cost),
+      manual_price: override !== null,
     };
   });
 

@@ -543,7 +543,8 @@ export function registerCatalogRoutes() {
       <td class="num">${p.unit_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
       <td class="center small">${fmtQty(p.stock)}</td>
       <td class="right nowrap">
-        <form class="inline-form" method="post" action="/produtos/${p.id}/excluir" data-confirm="Excluir este produto do catálogo?">
+        <a class="btn sm" href="/produtos/${p.id}/editar">Editar</a>
+        <form class="inline-form" method="post" action="/produtos/${p.id}/excluir" data-confirm="Remover este produto do catálogo?">
           ${csrfField(ctx)}<button class="btn sm danger">Excluir</button>
         </form>
       </td>
@@ -563,7 +564,8 @@ export function registerCatalogRoutes() {
       ${pageHeader({
         title: 'Catálogo de produtos',
         subtitle: `${total} produto(s) encontrado(s)`,
-        actions: `<a class="btn" href="/modelo-importacao.xlsx">Baixar planilha modelo</a>`,
+        actions: `<a class="btn primary" href="/produtos/novo">Novo produto</a>
+                  <a class="btn" href="/modelo-importacao.xlsx">Baixar planilha modelo</a>`,
       })}
       ${flash(ctx)}
       ${card(null, `
@@ -581,6 +583,109 @@ export function registerCatalogRoutes() {
           : emptyState(q ? 'Nenhum produto encontrado para esta busca.' : 'Nenhum produto no catálogo. Envie uma planilha em Fornecedores.')}
       `, { flush: products.length > 0 })}
     `);
+  });
+
+  const produtoForm = (ctx, { product = null, values = {}, error = '' } = {}) => {
+    const v = { ...(product || {}), ...values };
+    const isNew = !product;
+    const fornecedores = listSuppliers(true).map((s) => ({
+      value: s.id,
+      label: `${s.name}${s.is_own ? ' (emitente)' : ''}`,
+    }));
+
+    return render(ctx, isNew ? 'Novo produto' : 'Editar produto', `
+      ${pageHeader({
+        title: isNew ? 'Novo produto' : 'Editar produto',
+        subtitle: isNew ? 'Cadastre um item direto no catálogo, sem planilha.' : esc(product.description),
+        back: { href: '/produtos', label: 'Catálogo' },
+      })}
+      ${error ? `<div class="flash bad">${esc(error)}</div>` : ''}
+      ${card(null, `
+        <form method="post" action="${isNew ? '/produtos' : `/produtos/${product.id}`}">
+          ${csrfField(ctx)}
+          <div class="form-grid">
+            ${select({
+              label: 'Fornecedor',
+              name: 'supplier_id',
+              value: v.supplier_id || '',
+              required: true,
+              options: [{ value: '', label: '— selecione —' }].concat(fornecedores),
+            })}
+            ${field({ label: 'Código interno', name: 'internal_code', value: v.internal_code || '' })}
+            ${field({ label: 'Descrição', name: 'description', value: v.description || '', required: true, className: 'span2' })}
+            ${field({ label: 'Valor unitário (R$)', name: 'unit_price', value: v.unit_price ?? '', required: true, placeholder: '0,00' })}
+            ${field({ label: 'Marca', name: 'brand', value: v.brand || '' })}
+            ${field({ label: 'Estoque', name: 'stock', value: v.stock ?? 0 })}
+            ${field({ label: 'Unidade', name: 'unit', value: v.unit || 'UN', placeholder: 'UN, M, PC...' })}
+            ${field({ label: 'Código do fabricante', name: 'manufacturer_code', value: v.manufacturer_code || '' })}
+            ${field({ label: 'Código de barras (EAN)', name: 'ean', value: v.ean || '' })}
+            ${field({ label: 'Referência', name: 'reference', value: v.reference || '' })}
+            ${field({ label: 'NCM', name: 'ncm', value: v.ncm || '' })}
+          </div>
+          <div class="form-actions">
+            ${button('Salvar produto', { kind: 'primary' })}
+            ${button('Cancelar', { kind: 'ghost', href: '/produtos' })}
+          </div>
+        </form>
+      `)}
+    `);
+  };
+
+  routeGet('/produtos/novo', (ctx) => {
+    requireUser(ctx);
+    const fornecedor = Number(ctx.url.searchParams.get('fornecedor') || 0) || '';
+    return produtoForm(ctx, { values: { supplier_id: fornecedor, unit: 'UN', stock: 0 } });
+  });
+
+  routeGet('/produtos/:id/editar', (ctx) => {
+    requireUser(ctx);
+    const product = getProduct(Number(ctx.params.id));
+    if (!product) throw new HttpError(404, 'Produto não encontrado.');
+    return produtoForm(ctx, { product });
+  });
+
+  post('/produtos', (ctx) => {
+    const user = requireUser(ctx);
+    const description = str(ctx.fields.description).trim();
+    const supplierId = Number(str(ctx.fields.supplier_id));
+    if (!description) return produtoForm(ctx, { values: ctx.fields, error: 'Informe a descrição.' });
+    if (!supplierId) return produtoForm(ctx, { values: ctx.fields, error: 'Selecione o fornecedor.' });
+
+    const r = run(
+      `INSERT INTO products (supplier_id, internal_code, description, unit_price, brand, stock,
+         manufacturer_code, ean, reference, ncm, unit, active, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?)`,
+      supplierId, str(ctx.fields.internal_code) || null, description, num(ctx.fields.unit_price, 0),
+      str(ctx.fields.brand) || null, num(ctx.fields.stock, 0), str(ctx.fields.manufacturer_code) || null,
+      str(ctx.fields.ean) || null, str(ctx.fields.reference) || null, str(ctx.fields.ncm) || null,
+      str(ctx.fields.unit) || 'UN', nowIso(),
+    );
+    audit(user.id, 'product.create', 'products', r.lastId, description);
+    return redirect(`/produtos?msg=${encodeURIComponent('Produto cadastrado.')}`);
+  });
+
+  post('/produtos/:id', (ctx) => {
+    const user = requireUser(ctx);
+    const id = Number(ctx.params.id);
+    const product = getProduct(id);
+    if (!product) throw new HttpError(404, 'Produto não encontrado.');
+
+    const description = str(ctx.fields.description).trim();
+    const supplierId = Number(str(ctx.fields.supplier_id));
+    if (!description) return produtoForm(ctx, { product, values: ctx.fields, error: 'Informe a descrição.' });
+    if (!supplierId) return produtoForm(ctx, { product, values: ctx.fields, error: 'Selecione o fornecedor.' });
+
+    run(
+      `UPDATE products SET supplier_id=?, internal_code=?, description=?, unit_price=?, brand=?,
+         stock=?, manufacturer_code=?, ean=?, reference=?, ncm=?, unit=?, active=1, updated_at=?
+       WHERE id=?`,
+      supplierId, str(ctx.fields.internal_code) || null, description, num(ctx.fields.unit_price, 0),
+      str(ctx.fields.brand) || null, num(ctx.fields.stock, 0), str(ctx.fields.manufacturer_code) || null,
+      str(ctx.fields.ean) || null, str(ctx.fields.reference) || null, str(ctx.fields.ncm) || null,
+      str(ctx.fields.unit) || 'UN', nowIso(), id,
+    );
+    audit(user.id, 'product.update', 'products', id, description);
+    return redirect(`/produtos?msg=${encodeURIComponent('Produto atualizado.')}`);
   });
 
   post('/produtos/:id/excluir', (ctx) => {

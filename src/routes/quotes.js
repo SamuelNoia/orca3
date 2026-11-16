@@ -7,7 +7,7 @@ import {
   searchProducts, getProduct, matchingOffers, getClient, getSupplier, dashboardStats,
 } from '../repo.js';
 import { buildQuoteWorkbook, buildComparisonWorkbook } from '../exporter.js';
-import { fmtMoney, fmtQty, fmtPct } from '../calc.js';
+import { fmtMoney, fmtQty, fmtPct, unitPriceFor } from '../calc.js';
 import {
   layout, esc, field, select, textarea, card, pageHeader, button, csrfField,
   badge, emptyState, flash, statusBadge,
@@ -314,7 +314,10 @@ export function registerQuoteRoutes() {
           ${melhor}</td>
         <td><input class="qty" type="text" name="q${it.id}" value="${brQty(it.qty)}" data-autosave></td>
         <td><input type="text" name="c${it.id}" value="${brNum(it.unit_cost)}" data-money style="text-align:right"></td>
-        <td class="num">${brNum(line.unit_price)}</td>
+        <td><input type="text" name="p${it.id}" value="${line.manual_price ? brNum(line.unit_price) : ''}"
+             placeholder="${brNum(unitPriceFor(Number(it.unit_cost), quote.margin_pct, quote.margin_mode, quote.rounding))}"
+             data-money title="Preço final de venda. Deixe em branco para calcular pela margem."
+             style="text-align:right${line.manual_price ? ';font-weight:700;color:var(--navy)' : ''}"></td>
         <td class="num strong">${brNum(line.line_total)}</td>
         <td class="center">
           <button class="btn sm danger" form="del-${it.id}" title="Remover item">✕</button>
@@ -354,13 +357,17 @@ export function registerQuoteRoutes() {
         back: { href: '/orcamentos', label: 'Orçamentos' },
         actions: `<a class="btn primary" href="/orcamentos/${quote.id}/exportar.xlsx">Gerar planilha</a>
                   <a class="btn" href="/orcamentos/${quote.id}/comparativo.xlsx">Comparativo</a>
-                  <a class="btn" href="/orcamentos/${quote.id}/imprimir">Imprimir</a>
+                  <a class="btn" href="/orcamentos/${quote.id}/imprimir">PDF / Imprimir</a>
                   <form class="inline-form" method="post" action="/orcamentos/${quote.id}/duplicar">${csrfField(ctx)}<button class="btn" title="Duplicar cabeçalho e itens">Duplicar</button></form>`,
       })}
       ${flash(ctx)}
       <div class="quote-layout">
         <div>
           ${card('Itens do orçamento', `
+            <p class="small muted" style="margin:0 0 12px">
+              Cada item pode vir de um fornecedor diferente. O <strong>preço de venda</strong> pode ser digitado
+              à mão; deixe em branco para calcular pela margem.
+            </p>
             ${items.length ? `<form method="post" action="/orcamentos/${quote.id}/itens/salvar">
               ${csrfField(ctx)}
               <div class="table-wrap"><table class="items-table">
@@ -368,7 +375,7 @@ export function registerQuoteRoutes() {
                   <th class="center" style="width:38px">#</th><th style="width:70px">Código</th>
                   <th>Descrição</th><th style="width:190px">Fornecedor</th>
                   <th class="center" style="width:80px">Qtd</th><th style="width:110px" class="num">Custo unit.</th>
-                  <th class="num" style="width:100px">Preço unit.</th><th class="num" style="width:110px">Total</th><th style="width:40px"></th>
+                  <th class="num" style="width:110px">Preço venda</th><th class="num" style="width:110px">Total</th><th style="width:40px"></th>
                 </tr></thead>
                 <tbody>${itemRows}</tbody>
               </table></div>
@@ -410,7 +417,7 @@ export function registerQuoteRoutes() {
               ${csrfField(ctx)}
               ${field({ label: 'Margem (%)', name: 'margin_pct', type: 'number', step: '0.01', value: quote.margin_pct })}
               ${select({ label: 'Forma de cálculo', name: 'margin_mode', value: quote.margin_mode, options: [{ value: 'markup', label: 'Acréscimo sobre o custo' }, { value: 'margin', label: 'Margem sobre a venda' }] })}
-              ${field({ label: 'Serviço de instalação (%)', name: 'service_pct', type: 'number', step: '0.01', value: quote.service_pct })}
+              ${field({ label: 'Serviço de instalação (%)', name: 'service_pct', type: 'number', step: '0.01', value: quote.service_pct, hint: 'Deixe 0 para gerar o orçamento sem serviço.' })}
               ${field({ label: 'Arredondar preço (R$)', name: 'rounding', type: 'number', step: '0.01', value: quote.rounding, hint: '0 = sem arredondamento. Ex.: 0,10 sobe para o próximo décimo.' })}
               ${field({ label: 'Validade (dias)', name: 'valid_days', type: 'number', value: quote.valid_days })}
               ${select({ label: 'Situação', name: 'status', value: quote.status, options: [{ value: 'draft', label: 'Rascunho' }, { value: 'sent', label: 'Enviado' }, { value: 'approved', label: 'Aprovado' }, { value: 'rejected', label: 'Recusado' }] })}
@@ -517,8 +524,9 @@ export function registerQuoteRoutes() {
       const qtyRaw = str(ctx.fields[`q${it.id}`]);
       const costRaw = str(ctx.fields[`c${it.id}`]);
       const supplierRaw = str(ctx.fields[`f${it.id}`]);
+      const priceRaw = str(ctx.fields[`p${it.id}`]);
       const qty = qtyRaw === '' ? it.qty : num(qtyRaw, it.qty);
-      let supplierId = supplierRaw === '' ? it.supplier_id : Number(supplierRaw) || null;
+      const supplierId = supplierRaw === '' ? it.supplier_id : Number(supplierRaw) || null;
       let cost = costRaw === '' ? it.unit_cost : num(costRaw, it.unit_cost);
 
       if (supplierId && supplierId !== it.supplier_id) {
@@ -528,7 +536,14 @@ export function registerQuoteRoutes() {
         );
         if (offer) cost = offer.unit_cost;
       }
-      run('UPDATE quote_items SET qty = ?, unit_cost = ?, supplier_id = ? WHERE id = ?', qty, cost, supplierId, it.id);
+
+      // preco de venda digitado a mao; campo vazio volta a usar a margem
+      const override = priceRaw === '' ? null : num(priceRaw, null);
+
+      run(
+        'UPDATE quote_items SET qty = ?, unit_cost = ?, supplier_id = ?, price_override = ? WHERE id = ?',
+        qty, cost, supplierId, override, it.id,
+      );
     }
     touch(id);
     return redirect(`/orcamentos/${id}?msg=${encodeURIComponent('Itens atualizados.')}`);
@@ -640,10 +655,10 @@ export function registerQuoteRoutes() {
 
       for (const it of full.items) {
         const ir = run(
-          `INSERT INTO quote_items (quote_id, position, internal_code, description, qty, unit_cost, product_id, supplier_id, unit, note)
-           VALUES (?,?,?,?,?,?,?,?,?,?)`,
+          `INSERT INTO quote_items (quote_id, position, internal_code, description, qty, unit_cost, price_override, product_id, supplier_id, unit, note)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
           quoteId, it.position, it.internal_code, it.description, it.qty, it.unit_cost,
-          it.product_id, it.supplier_id, it.unit, it.note,
+          it.price_override, it.product_id, it.supplier_id, it.unit, it.note,
         );
         for (const o of (full.offers.get(it.id) || [])) {
           run(
@@ -739,9 +754,9 @@ export function registerQuoteRoutes() {
     return render(ctx, `Imprimir ${quote.title}`, `
       ${pageHeader({
         title: 'Pré-visualização da impressão',
-        subtitle: 'Use Ctrl+P. Para a planilha oficial, gere o arquivo XLSX.',
+        subtitle: 'No diálogo de impressão, escolha <strong>Salvar como PDF</strong> para gerar o arquivo. Para a planilha editável, use "Baixar XLSX".',
         back: { href: `/orcamentos/${quote.id}`, label: quote.title },
-        actions: `<button class="btn primary" onclick="window.print()">Imprimir</button>
+        actions: `<button class="btn primary" onclick="window.print()">Salvar como PDF</button>
                   <a class="btn" href="/orcamentos/${quote.id}/exportar.xlsx">Baixar XLSX</a>`,
       })}
       <div class="print-sheet">
@@ -756,7 +771,7 @@ export function registerQuoteRoutes() {
           <tbody>${rows}</tbody>
           <tfoot>
             <tr class="total"><td colspan="4">Produtos — ${esc(quote.title)}</td><td class="num">${brNum(calc.productsTotal)}</td></tr>
-            <tr><td colspan="4">Serviço de instalação (${fmtPct(calc.servicePct)})</td><td class="num">${brNum(calc.serviceValue)}</td></tr>
+            ${calc.servicePct > 0 ? `<tr><td colspan="4">Serviço de instalação (${fmtPct(calc.servicePct)})</td><td class="num">${brNum(calc.serviceValue)}</td></tr>` : ''}
             ${calc.expenseLines.map((e) => `<tr><td colspan="4">${esc(e.description)}</td><td class="num">${brNum(e.amount)}</td></tr>`).join('')}
             <tr class="total"><td colspan="4">VALOR TOTAL</td><td class="num">${brNum(calc.total)}</td></tr>
           </tfoot>
