@@ -37,7 +37,7 @@ function obsLines(quote, emitterName) {
   return [
     `1. Validade desta proposta: ${dias} (${numeroPorExtenso(dias)}) dias a contar da data de emissão.`,
     `2. Fornecimento dos materiais e execução dos serviços de instalação técnica realizados pela ${emitterName}.`,
-    '3. Valores unitários sujeitos a reajuste dinâmico conforme percentual configurado no campo de acréscimo.',
+    '3. Valores unitários sujeitos a reajuste conforme variação de mercado.',
     '4. Garantia dos materiais conforme fabricantes e garantia de 12 meses para os serviços prestados.',
   ];
 }
@@ -74,76 +74,66 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
     const merges = [];
     const push = (cells, h) => { R.push(h ? { cells, h } : { cells }); return R.length; };
 
-    push([{ v: `${emitterName} - ORÇAMENTO DE MATERIAIS E SERVIÇOS`, s: 'title' }], 28.05);
-    merges.push('A1:F1');
+    let n = push([{ v: `${emitterName} - ORÇAMENTO DE MATERIAIS E SERVIÇOS`, s: 'title' }], 28.05);
+    merges.push(`A${n}:F${n}`);
 
-    push([
+    n = push([
       { v: 'DADOS DO FORNECEDOR', s: 'section' }, null, null,
       { v: 'DADOS DO CLIENTE', s: 'section' }, null, null,
     ], 15);
-    merges.push('A2:C2', 'D2:F2');
+    merges.push(`A${n}:C${n}`, `D${n}:F${n}`);
 
-    push([
+    n = push([
       { v: 'Razão Social:', s: 'label' },
       { v: emitter?.legal_name || emitter?.name || '', s: 'value' }, null,
       { v: 'Razão Social:', s: 'label' },
       { v: client?.name || '', s: 'value' }, null,
     ], 29.4);
-    merges.push('B3:C3', 'E3:F3');
+    merges.push(`B${n}:C${n}`, `E${n}:F${n}`);
 
-    push([
+    n = push([
       { v: 'CNPJ / IE:', s: 'label' },
       { v: [emitter?.cnpj, emitter?.ie ? `I.E: ${emitter.ie}` : null].filter(Boolean).join('  |  '), s: 'value' }, null,
       { v: 'CNPJ / IE:', s: 'label' },
       { v: [client?.cnpj, client?.ie ? `I.E: ${client.ie}` : null].filter(Boolean).join('  |  '), s: 'value' }, null,
     ]);
-    merges.push('B4:C4', 'E4:F4');
+    merges.push(`B${n}:C${n}`, `E${n}:F${n}`);
 
-    push([
+    n = push([
       { v: 'Endereço:', s: 'label' }, { v: emitter?.address || '', s: 'value' }, null,
       { v: 'Endereço:', s: 'label' }, { v: client?.address || '', s: 'value' }, null,
     ]);
-    merges.push('B5:C5', 'E5:F5');
+    merges.push(`B${n}:C${n}`, `E${n}:F${n}`);
 
-    push([
+    n = push([
       { v: 'Contato:', s: 'label' }, { v: emitter?.contact || '', s: 'value' }, null,
       { v: 'Projeto / Local:', s: 'label' }, { v: q.location || q.title || '', s: 'value' }, null,
     ]);
-    merges.push('B6:C6', 'E6:F6');
+    merges.push(`B${n}:C${n}`, `E${n}:F${n}`);
 
-    const marginLabel = q.margin_mode === 'margin'
-      ? 'MARGEM APLICADA SOBRE O VALOR DE VENDA:'
-      : 'REAJUSTE / ACRÉSCIMO GERAL NOS MATERIAIS:';
-    const hint = q.margin_mode === 'margin'
-      ? ' (Altere o % acima para recalcular os preços de venda)'
-      : ' (Altere o % acima para reajustar o valor unitário de todos os materiais)';
-    push([
-      { v: marginLabel, s: 'subLabel' }, null, null,
-      { v: (Number(q.margin_pct) || 0) / 100, s: 'pct' },
-      { v: hint, s: 'note' }, null,
-    ], 13.8);
-    merges.push('A7:C7', 'E7:F7');
-
-    push([
+    n = push([
       { v: 'Código', s: 'headerLeft' },
       { v: 'Descrição dos Produtos e Serviços', s: 'header' }, null,
       { v: 'Qtd', s: 'header' },
       { v: 'V. Unitário (R$)', s: 'header' },
       { v: 'Valor Total (R$)', s: 'header' },
     ], 22.05);
-    merges.push('B8:C8');
+    merges.push(`B${n}:C${n}`);
 
     const firstItemRow = R.length + 1;
     const items = block.items.length
       ? block.items
       : [{ description: '(sem itens)', qty: 1, unit_cost: 0, internal_code: '' }];
 
+    // a margem entra no proprio calculo: o cliente nao ve percentual nenhum
+    const margem = Number(((Number(q.margin_pct) || 0) / 100).toFixed(6));
+
     items.forEach((it, i) => {
       const rowNum = R.length + 1;
       const custosRef = `CUSTOS!E${block.custosRows[i] ?? 4}`;
       let formula = q.margin_mode === 'margin'
-        ? `${custosRef}/(1-$D$7)`
-        : `${custosRef}*(1+$D$7)`;
+        ? `${custosRef}/(1-${margem})`
+        : `${custosRef}*(1+${margem})`;
       if (Number(q.rounding) > 0) formula = `CEILING(${formula},${Number(q.rounding)})`;
 
       const line = c.lines[i];
@@ -297,6 +287,8 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
     cols: [28, 12, 40, 10, 20, 26, 18],
     rows: custosRows,
     merges: ['A1:G1'],
+    // aba interna: oculta para nao expor custo ao cliente
+    hidden: true,
     page: { orientation: 'landscape', paperSize: 9, fitToWidth: 1 },
   };
 

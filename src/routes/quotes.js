@@ -748,7 +748,7 @@ export function registerQuoteRoutes() {
       ? quote.observations.split(/\r?\n/).filter(Boolean).map((l) => `<p class="small" style="margin:2px 0">${esc(l)}</p>`).join('')
       : `<p class="small" style="margin:2px 0">1. Validade desta proposta: ${quote.valid_days} dias a contar da data de emissão.</p>
          <p class="small" style="margin:2px 0">2. Fornecimento dos materiais e execução dos serviços de instalação técnica realizados pela ${esc(emitter?.legal_name || emitter?.name || '')}.</p>
-         <p class="small" style="margin:2px 0">3. Valores unitários sujeitos a reajuste conforme percentual de ${fmtPct(quote.margin_pct)}.</p>
+         <p class="small" style="margin:2px 0">3. Valores unitários sujeitos a reajuste conforme variação de mercado.</p>
          <p class="small" style="margin:2px 0">4. Garantia dos materiais conforme fabricantes e 12 meses para os serviços.</p>`;
 
     return render(ctx, `Imprimir ${quote.title}`, `
@@ -771,7 +771,7 @@ export function registerQuoteRoutes() {
           <tbody>${rows}</tbody>
           <tfoot>
             <tr class="total"><td colspan="4">Produtos — ${esc(quote.title)}</td><td class="num">${brNum(calc.productsTotal)}</td></tr>
-            ${calc.servicePct > 0 ? `<tr><td colspan="4">Serviço de instalação (${fmtPct(calc.servicePct)})</td><td class="num">${brNum(calc.serviceValue)}</td></tr>` : ''}
+            ${calc.servicePct > 0 ? `<tr><td colspan="4">Serviço de instalação</td><td class="num">${brNum(calc.serviceValue)}</td></tr>` : ''}
             ${calc.expenseLines.map((e) => `<tr><td colspan="4">${esc(e.description)}</td><td class="num">${brNum(e.amount)}</td></tr>`).join('')}
             <tr class="total"><td colspan="4">VALOR TOTAL</td><td class="num">${brNum(calc.total)}</td></tr>
           </tfoot>

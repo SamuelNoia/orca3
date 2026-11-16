@@ -422,7 +422,7 @@ export function buildXlsx(sheets, meta = {}) {
     const name = safeSheetName(sheet.name, used);
     const xml = sheetXml({ ...sheet, selected: sheet.selected ?? i === 0 });
     files.push({ name: `xl/worksheets/sheet${i + 1}.xml`, data: xml });
-    sheetEntries.push({ name, rid: `rId${i + 1}`, html: xml });
+    sheetEntries.push({ name, rid: `rId${i + 1}`, hidden: !!sheet.hidden, html: xml });
   });
 
   const stylesRid = `rId${sheets.length + 1}`;
@@ -436,7 +436,7 @@ export function buildXlsx(sheets, meta = {}) {
 <fileVersion appName="xl" lastEdited="7" lowestEdited="7" rupBuild="27126"/>
 <workbookPr defaultThemeVersion="166925"/>
 <bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="16000" activeTab="0"/></bookViews>
-<sheets>${sheetEntries.map((s, i) => `<sheet name="${xmlEsc(s.name)}" sheetId="${i + 1}" r:id="${s.rid}"/>`).join('')}</sheets>
+<sheets>${sheetEntries.map((s, i) => `<sheet name="${xmlEsc(s.name)}" sheetId="${i + 1}"${s.hidden ? ' state="hidden"' : ''} r:id="${s.rid}"/>`).join('')}</sheets>
 <calcPr calcId="171027" fullCalcOnLoad="1"/>
 </workbook>`,
   });

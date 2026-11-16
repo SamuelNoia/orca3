@@ -313,15 +313,21 @@ já pronto.
 
 ### 4. Planilha gerada
 
-**Gerar planilha** produz um `.xlsx` com **fórmulas reais**, editável:
+**Gerar planilha** produz um `.xlsx` editável:
 
-- aba **CUSTOS** — preços base (interna), com fornecedor e marca;
-- uma aba por orçamento — cabeçalho do fornecedor e do cliente, campo de reajuste
-  em `D7`, itens com `=CUSTOS!E4*(1+$D$7)`, serviço, despesas e total;
+- uma aba por orçamento — cabeçalho do fornecedor e do cliente, itens, serviço,
+  despesas e total;
+- aba **CUSTOS** — preços base, com fornecedor e marca. Fica **oculta**: é a
+  memória de cálculo interna e não aparece como aba para o cliente;
 - aba **RESUMO CONSOLIDADO** quando há mais de um orçamento.
 
 As cores, fontes, larguras, mesclagens e formatos seguem o modelo de planilha da
 empresa.
+
+**Nada de cálculo interno no documento do cliente.** A margem, o percentual de
+serviço e a forma de cálculo não aparecem na planilha nem no PDF. Os preços já
+saem fechados: a margem vai embutida na fórmula (`=CUSTOS!E4*(1+0.6)`) em vez de
+ficar num campo visível, e a linha de serviço mostra apenas o valor, sem "%".
 
 **Consolidado do projeto:** em *Projetos → Planilha consolidada*, todas as unidades
 saem em um único arquivo, como no modelo.
@@ -332,7 +338,8 @@ saem em um único arquivo, como no modelo.
 escolha **Salvar como PDF** — o resultado é o documento pronto para enviar ao
 cliente, com cabeçalho da empresa, itens, totais, observações e dados bancários.
 
-A linha de serviço só aparece se o percentual de serviço for maior que zero.
+A linha de serviço só aparece se o percentual de serviço for maior que zero, e
+nunca mostra o percentual aplicado.
 
 ---
 

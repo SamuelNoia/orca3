@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { readTable } from '../src/xlsx.js';
+import { readTable, zipRead } from '../src/xlsx.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 3987;
@@ -477,6 +477,37 @@ async function main() {
 
   const printSemSvc = await http.get(`/orcamentos/${orcId}/imprimir`);
   ok('impressao sem linha de servico', !printSemSvc.text.includes('Serviço de instalação'));
+
+  section('Orcamento nao revela o calculo interno');
+  const edCalc = await http.get(`/orcamentos/${orcId}`);
+  await http.post(`/orcamentos/${orcId}/parametros`, {
+    _csrf: tokenOf(edCalc.text),
+    margin_pct: '60', margin_mode: 'markup', service_pct: '65',
+    rounding: '0', valid_days: '15', status: 'draft',
+  });
+
+  const xCalc = await http.get(`/orcamentos/${orcId}/exportar.xlsx`);
+  const filesCalc = zipRead(xCalc.buffer);
+  const wbCalc = readTable(xCalc.buffer, 'c.xlsx');
+  const shCalc = wbCalc.sheets.find((s) => s.name.startsWith('Orçamento'));
+  const conteudoCalc = JSON.stringify(shCalc.rows).toUpperCase();
+
+  ok('sem linha de margem/reajuste percentual', !conteudoCalc.includes('MARGEM') && !conteudoCalc.includes('ACRÉSCIMO'));
+  ok('linha de servico sem percentual', !/SERVIÇO DE INSTALAÇÃO \(/.test(conteudoCalc), '');
+  ok('nao menciona percentual nas observacoes', !/PERCENTUAL/i.test(conteudoCalc));
+
+  const wbXmlCalc = filesCalc.get('xl/workbook.xml').toString('utf8');
+  ok('aba CUSTOS oculta ao cliente', /<sheet name="CUSTOS"[^>]*state="hidden"/.test(wbXmlCalc), wbXmlCalc.match(/<sheet name="CUSTOS"[^>]*>/)?.[0] || '');
+
+  const algumaFormulaComD7 = [...filesCalc.keys()]
+    .filter((k) => k.startsWith('xl/worksheets/'))
+    .some((k) => filesCalc.get(k).toString('utf8').includes('$D$7'));
+  ok('formulas nao dependem de celula de reajuste', !algumaFormulaComD7);
+
+  const printComSvc = await http.get(`/orcamentos/${orcId}/imprimir`);
+  ok('impressao mostra servico sem percentual',
+    printComSvc.text.includes('Serviço de instalação') && !printComSvc.text.includes('Serviço de instalação ('));
+  ok('impressao sem percentual de reajuste', !/reajuste conforme percentual/i.test(printComSvc.text));
 
   section('Planilha modelo');
   const modelo = await http.get('/modelo-importacao.xlsx');
