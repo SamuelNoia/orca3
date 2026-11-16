@@ -1,0 +1,633 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { get as routeGet, post, str, num, bool, htmlPage, redirect, HttpError, download } from '../web.js';
+import { requireUser } from '../auth.js';
+import { get, run, all, nowIso, audit } from '../db.js';
+import { TMP_DIR } from '../config.js';
+import { buildModeloXlsx, buildModeloCsv } from '../modelo.js';
+import {
+  listClients, getClient, listSuppliers, getSupplier, saveSupplier,
+  searchProducts, countProducts, getProduct,
+} from '../repo.js';
+import {
+  FIELDS, detectMapping, extractRecords, previewFile, importProducts,
+  saveMapping, getMapping, lastBatch,
+} from '../importer.js';
+import { readTable } from '../xlsx.js';
+import {
+  layout, esc, field, select, textarea, card, pageHeader, button, csrfField,
+  badge, emptyState, flash, statusBadge,
+} from '../ui.js';
+import { fmtQty } from '../calc.js';
+
+function render(ctx, title, body, wide = false) {
+  return htmlPage(layout(ctx, { title, body, wide }));
+}
+
+const PAGE_SIZE = 50;
+
+// ---------------------------------------------------------------- clientes
+export function registerCatalogRoutes() {
+  routeGet('/clientes', (ctx) => {
+    requireUser(ctx);
+    const q = ctx.url.searchParams.get('q') || '';
+    const clients = listClients(q);
+    const rows = clients.map((c) => `<tr>
+      <td class="strong"><a href="/clientes/${c.id}">${esc(c.name)}</a></td>
+      <td class="mono small">${esc(c.cnpj || '—')}</td>
+      <td class="small">${esc(c.contact || '—')}</td>
+      <td class="small mono">${esc(c.phone || c.email || '—')}</td>
+      <td class="center">${c.quotes_count}</td>
+      <td class="right nowrap"><a class="btn sm" href="/clientes/${c.id}">Editar</a></td>
+    </tr>`).join('');
+
+    const body = clients.length
+      ? `<div class="table-wrap"><table>
+          <thead><tr><th>Cliente</th><th>CNPJ</th><th>Contato</th><th>Telefone / e-mail</th><th class="center">Orçamentos</th><th></th></tr></thead>
+          <tbody>${rows}</tbody></table></div>`
+      : emptyState('Nenhum cliente encontrado. Cadastre o primeiro para começar a fazer orçamentos.');
+
+    return render(ctx, 'Clientes', `
+      ${pageHeader({
+        title: 'Clientes',
+        subtitle: 'Quem recebe as propostas. Os dados aparecem na planilha gerada.',
+        actions: button('Novo cliente', { href: '/clientes/novo' }),
+      })}
+      ${flash(ctx)}
+      ${card(null, `
+        <form method="get" action="/clientes" class="inline" style="margin-bottom:14px">
+          <label class="field" style="flex:1"><span>Buscar</span>
+            <input type="search" name="q" value="${esc(q)}" placeholder="Nome ou CNPJ"></label>
+          ${button('Buscar', { kind: 'soft' })}
+        </form>
+        ${body}
+      `, { flush: false })}
+    `);
+  });
+
+  const clientForm = (ctx, { client = null, values = {}, error = '' } = {}) => {
+    const v = { ...(client || {}), ...values };
+    const isNew = !client;
+    return render(ctx, isNew ? 'Novo cliente' : 'Editar cliente', `
+      ${pageHeader({ title: isNew ? 'Novo cliente' : 'Editar cliente', back: { href: '/clientes', label: 'Clientes' } })}
+      ${error ? `<div class="flash bad">${esc(error)}</div>` : ''}
+      ${card(null, `
+        <form method="post" action="${isNew ? '/clientes' : `/clientes/${client.id}`}">
+          ${csrfField(ctx)}
+          <div class="form-grid">
+            ${field({ label: 'Razão social / Nome', name: 'name', value: v.name || '', required: true, className: 'span2' })}
+            ${field({ label: 'CNPJ / CPF', name: 'cnpj', value: v.cnpj || '' })}
+            ${field({ label: 'Inscrição estadual', name: 'ie', value: v.ie || '' })}
+            ${field({ label: 'Endereço completo', name: 'address', value: v.address || '', className: 'span2' })}
+            ${field({ label: 'Pessoa de contato', name: 'contact', value: v.contact || '' })}
+            ${field({ label: 'Telefone', name: 'phone', value: v.phone || '' })}
+            ${field({ label: 'E-mail', name: 'email', type: 'email', value: v.email || '' })}
+            ${textarea({ label: 'Observações internas', name: 'notes', value: v.notes || '', rows: 3 })}
+          </div>
+          <div class="form-actions">
+            ${button('Salvar', { kind: 'primary' })}
+            ${button('Cancelar', { kind: 'ghost', href: '/clientes' })}
+          </div>
+        </form>
+      `)}
+    `);
+  };
+
+  routeGet('/clientes/novo', (ctx) => { requireUser(ctx); return clientForm(ctx, {}); });
+  routeGet('/clientes/:id', (ctx) => {
+    requireUser(ctx);
+    const client = getClient(Number(ctx.params.id));
+    if (!client) throw new HttpError(404, 'Cliente não encontrado.');
+    return clientForm(ctx, { client });
+  });
+
+  post('/clientes', (ctx) => {
+    const user = requireUser(ctx);
+    const name = str(ctx.fields.name).trim();
+    if (!name) return clientForm(ctx, { values: ctx.fields, error: 'Informe o nome do cliente.' });
+    const r = run(
+      `INSERT INTO clients (name, cnpj, ie, address, contact, email, phone, notes, active, created_at)
+       VALUES (?,?,?,?,?,?,?,?,1,?)`,
+      name, str(ctx.fields.cnpj), str(ctx.fields.ie), str(ctx.fields.address), str(ctx.fields.contact),
+      str(ctx.fields.email), str(ctx.fields.phone), str(ctx.fields.notes), nowIso(),
+    );
+    audit(user.id, 'client.create', 'clients', r.lastId, name);
+    return redirect(`/clientes?msg=${encodeURIComponent('Cliente cadastrado.')}`);
+  });
+
+  post('/clientes/:id', (ctx) => {
+    const user = requireUser(ctx);
+    const id = Number(ctx.params.id);
+    const name = str(ctx.fields.name).trim();
+    if (!name) return clientForm(ctx, { client: getClient(id), values: ctx.fields, error: 'Informe o nome do cliente.' });
+    run(
+      `UPDATE clients SET name=?, cnpj=?, ie=?, address=?, contact=?, email=?, phone=?, notes=?, updated_at=? WHERE id=?`,
+      name, str(ctx.fields.cnpj), str(ctx.fields.ie), str(ctx.fields.address), str(ctx.fields.contact),
+      str(ctx.fields.email), str(ctx.fields.phone), str(ctx.fields.notes), nowIso(), id,
+    );
+    audit(user.id, 'client.update', 'clients', id, name);
+    return redirect(`/clientes/${id}?msg=${encodeURIComponent('Cliente atualizado.')}`);
+  });
+
+  post('/clientes/:id/excluir', (ctx) => {
+    const user = requireUser(ctx);
+    const id = Number(ctx.params.id);
+    const quoted = get('SELECT COUNT(*) AS n FROM quotes WHERE client_id = ?', id)?.n || 0;
+    if (quoted > 0) {
+      return redirect(`/clientes/${id}?err=${encodeURIComponent('Este cliente possui orçamentos e não pode ser excluído. Desative-o em vez disso.')}`);
+    }
+    run('DELETE FROM clients WHERE id = ?', id);
+    audit(user.id, 'client.delete', 'clients', id, null);
+    return redirect(`/clientes?msg=${encodeURIComponent('Cliente excluído.')}`);
+  });
+
+  // ---------------------------------------------------------------- fornecedores
+  routeGet('/fornecedores', (ctx) => {
+    requireUser(ctx);
+    const suppliers = listSuppliers();
+    const rows = suppliers.map((s) => `<tr>
+      <td class="strong"><a href="/fornecedores/${s.id}">${esc(s.name)}</a>
+        ${s.is_own ? badge('emitente', 'info') : ''}${s.active ? '' : badge('inativo', 'bad')}</td>
+      <td class="mono small">${esc(s.cnpj || '—')}</td>
+      <td class="center">${s.products_count}</td>
+      <td class="small muted nowrap">${s.last_import ? esc(new Date(s.last_import).toLocaleDateString('pt-BR')) : 'nunca'}</td>
+      <td class="right nowrap">
+        <a class="btn sm" href="/fornecedores/${s.id}/importar">Enviar planilha</a>
+        <a class="btn sm" href="/fornecedores/${s.id}">Abrir</a>
+      </td>
+    </tr>`).join('');
+
+    return render(ctx, 'Fornecedores', `
+      ${pageHeader({
+        title: 'Fornecedores',
+        subtitle: 'Cada fornecedor tem seu próprio catálogo, alimentado pela planilha que ele envia.',
+        actions: button('Novo fornecedor', { href: '/fornecedores/novo' }),
+      })}
+      ${flash(ctx)}
+      ${card(null, suppliers.length
+        ? `<div class="table-wrap"><table>
+            <thead><tr><th>Fornecedor</th><th>CNPJ</th><th class="center">Produtos</th><th>Última planilha</th><th></th></tr></thead>
+            <tbody>${rows}</tbody></table></div>`
+        : emptyState('Nenhum fornecedor cadastrado.'), { flush: true })}
+    `);
+  });
+
+  const supplierForm = (ctx, { supplier = null, values = {}, error = '' } = {}) => {
+    const v = { ...(supplier || {}), ...values };
+    const isNew = !supplier;
+    return render(ctx, isNew ? 'Novo fornecedor' : `Editar ${supplier.name}`, `
+      ${pageHeader({ title: isNew ? 'Novo fornecedor' : 'Editar fornecedor', back: { href: '/fornecedores', label: 'Fornecedores' } })}
+      ${error ? `<div class="flash bad">${esc(error)}</div>` : ''}
+      ${card(null, `
+        <form method="post" action="${isNew ? '/fornecedores' : `/fornecedores/${supplier.id}`}">
+          ${csrfField(ctx)}
+          <div class="form-grid">
+            ${field({ label: 'Nome fantasia', name: 'name', value: v.name || '', required: true })}
+            ${field({ label: 'Razão social', name: 'legal_name', value: v.legal_name || '' })}
+            ${field({ label: 'CNPJ', name: 'cnpj', value: v.cnpj || '' })}
+            ${field({ label: 'Inscrição estadual', name: 'ie', value: v.ie || '' })}
+            ${field({ label: 'Endereço', name: 'address', value: v.address || '', className: 'span2' })}
+            ${field({ label: 'Contato', name: 'contact', value: v.contact || '' })}
+            ${field({ label: 'E-mail', name: 'email', type: 'email', value: v.email || '' })}
+            ${field({ label: 'Telefone', name: 'phone', value: v.phone || '' })}
+            ${textarea({ label: 'Dados bancários / PIX', name: 'bank_info', value: v.bank_info || '', rows: 4, hint: 'Aparece no rodapé quando este fornecedor é o emitente da proposta.' })}
+          </div>
+          <label class="field" style="flex-direction:row;align-items:center;gap:8px;margin-top:8px">
+            <input type="checkbox" name="is_own" value="1" ${v.is_own ? 'checked' : ''}>
+            <span style="margin:0;font-weight:500">Esta é a empresa emitente (aparece como cabeçalho das propostas)</span>
+          </label>
+          <div class="form-actions">
+            ${button('Salvar', { kind: 'primary' })}
+            ${button('Cancelar', { kind: 'ghost', href: '/fornecedores' })}
+          </div>
+        </form>
+      `)}
+    `);
+  };
+
+  routeGet('/fornecedores/novo', (ctx) => { requireUser(ctx); return supplierForm(ctx, {}); });
+  routeGet('/fornecedores/:id', (ctx) => {
+    requireUser(ctx);
+    const supplier = getSupplier(Number(ctx.params.id));
+    if (!supplier) throw new HttpError(404, 'Fornecedor não encontrado.');
+    const batches = all(
+      'SELECT b.*, u.name AS user_name FROM import_batches b LEFT JOIN users u ON u.id = b.user_id WHERE b.supplier_id = ? ORDER BY b.id DESC LIMIT 8',
+      supplier.id,
+    );
+    const mapping = getMapping(supplier.id);
+    const batchRows = batches.map((b) => `<tr>
+      <td class="small nowrap">${esc(new Date(b.created_at).toLocaleString('pt-BR'))}</td>
+      <td class="small">${esc(b.filename || '—')}</td>
+      <td class="center">${b.rows_total}</td>
+      <td class="center" style="color:var(--ok);font-weight:600">${b.rows_imported}</td>
+      <td class="center">${b.rows_updated}</td>
+      <td class="small muted">${esc(b.user_name || '—')}</td>
+    </tr>`).join('');
+
+    return render(ctx, supplier.name, `
+      ${pageHeader({
+        title: supplier.name,
+        subtitle: `${supplier.products_count || supplier.products_count === 0 ? '' : ''}Catálogo com ${get('SELECT COUNT(*) AS n FROM products WHERE supplier_id = ?', supplier.id)?.n || 0} produtos`,
+        back: { href: '/fornecedores', label: 'Fornecedores' },
+        actions: `<a class="btn primary" href="/fornecedores/${supplier.id}/importar">Enviar planilha</a>
+                  <a class="btn" href="/produtos?fornecedor=${supplier.id}">Ver produtos</a>
+                  <a class="btn" href="/fornecedores/${supplier.id}/editar">Editar dados</a>`,
+      })}
+      ${flash(ctx)}
+      <div class="grid-2">
+        <div>
+          ${card('Últimas importações', batches.length
+            ? `<div class="table-wrap"><table>
+                <thead><tr><th>Data</th><th>Arquivo</th><th class="center">Linhas</th><th class="center">Novos</th><th class="center">Atualizados</th><th>Por</th></tr></thead>
+                <tbody>${batchRows}</tbody></table></div>`
+            : emptyState('Nenhuma planilha importada ainda. Use o botão “Enviar planilha”.'), { flush: true })}
+        </div>
+        <div>
+          ${card('Resumo do cadastro', `
+            <dl class="summary">
+              <div class="row"><span>CNPJ</span><span>${esc(supplier.cnpj || '—')}</span></div>
+              <div class="row"><span>Contato</span><span>${esc(supplier.contact || '—')}</span></div>
+              <div class="row"><span>E-mail</span><span>${esc(supplier.email || '—')}</span></div>
+              <div class="row"><span>Telefone</span><span>${esc(supplier.phone || '—')}</span></div>
+              <div class="row"><span>Última planilha</span><span>${batches[0] ? esc(new Date(batches[0].created_at).toLocaleDateString('pt-BR')) : '—'}</span></div>
+            </dl>
+            ${mapping ? `<p class="small muted" style="margin-top:14px">Mapeamento de colunas salvo em ${esc(new Date(mapping.updated_at).toLocaleString('pt-BR'))} — será reaproveitado automaticamente no próximo envio.</p>` : ''}
+          `)}
+        </div>
+      </div>
+    `);
+  });
+
+  routeGet('/fornecedores/:id/editar', (ctx) => {
+    requireUser(ctx);
+    const supplier = getSupplier(Number(ctx.params.id));
+    if (!supplier) throw new HttpError(404, 'Fornecedor não encontrado.');
+    return supplierForm(ctx, { supplier });
+  });
+
+  post('/fornecedores', (ctx) => {
+    const user = requireUser(ctx);
+    const name = str(ctx.fields.name).trim();
+    if (!name) return supplierForm(ctx, { values: ctx.fields, error: 'Informe o nome do fornecedor.' });
+    const isOwn = bool(ctx.fields.is_own);
+    if (isOwn) run('UPDATE suppliers SET is_own = 0');
+    const id = saveSupplier(null, {
+      name,
+      legal_name: str(ctx.fields.legal_name),
+      cnpj: str(ctx.fields.cnpj),
+      ie: str(ctx.fields.ie),
+      address: str(ctx.fields.address),
+      contact: str(ctx.fields.contact),
+      email: str(ctx.fields.email),
+      phone: str(ctx.fields.phone),
+      bank_info: str(ctx.fields.bank_info),
+      is_own: isOwn ? 1 : 0,
+      active: 1,
+    });
+    audit(user.id, 'supplier.create', 'suppliers', id, name);
+    return redirect(`/fornecedores/${id}?msg=${encodeURIComponent('Fornecedor cadastrado. Envie a planilha de produtos.')}`);
+  });
+
+  post('/fornecedores/:id', (ctx) => {
+    const user = requireUser(ctx);
+    const id = Number(ctx.params.id);
+    const name = str(ctx.fields.name).trim();
+    if (!name) return supplierForm(ctx, { supplier: getSupplier(id), values: ctx.fields, error: 'Informe o nome.' });
+    const isOwn = bool(ctx.fields.is_own);
+    if (isOwn) run('UPDATE suppliers SET is_own = 0 WHERE id <> ?', id);
+    saveSupplier(id, {
+      name,
+      legal_name: str(ctx.fields.legal_name),
+      cnpj: str(ctx.fields.cnpj),
+      ie: str(ctx.fields.ie),
+      address: str(ctx.fields.address),
+      contact: str(ctx.fields.contact),
+      email: str(ctx.fields.email),
+      phone: str(ctx.fields.phone),
+      bank_info: str(ctx.fields.bank_info),
+      is_own: isOwn ? 1 : 0,
+      active: 1,
+    });
+    audit(user.id, 'supplier.update', 'suppliers', id, name);
+    return redirect(`/fornecedores/${id}?msg=${encodeURIComponent('Fornecedor atualizado.')}`);
+  });
+
+  // ---------------------------------------------------------------- importacao
+  routeGet('/fornecedores/:id/importar', (ctx) => {
+    requireUser(ctx);
+    const supplier = getSupplier(Number(ctx.params.id));
+    if (!supplier) throw new HttpError(404, 'Fornecedor não encontrado.');
+    return render(ctx, 'Enviar planilha', `
+      ${pageHeader({
+        title: 'Enviar planilha de produtos',
+        subtitle: `Catálogo de <strong>${esc(supplier.name)}</strong>`,
+        back: { href: `/fornecedores/${supplier.id}`, label: supplier.name },
+        actions: `<a class="btn" href="/modelo-importacao.xlsx">Baixar planilha modelo</a>`,
+      })}
+      ${flash(ctx)}
+      ${card('Arquivo', `
+        <form method="post" action="/fornecedores/${supplier.id}/importar" enctype="multipart/form-data">
+          ${csrfField(ctx)}
+          <div class="form-grid">
+            <label class="field span2">
+              <span>Planilha (.xlsx, .csv) <b class="req">*</b></span>
+              <input type="file" name="file" accept=".xlsx,.csv,.txt" required>
+              <small>Aceita Excel (.xlsx) ou CSV. Arquivos .xls antigos devem ser salvos como .xlsx.</small>
+            </label>
+            ${select({
+              label: 'Como tratar os produtos já cadastrados',
+              name: 'mode',
+              value: 'merge',
+              options: [
+                { value: 'merge', label: 'Atualizar preços e incluir novos (recomendado)' },
+                { value: 'replace', label: 'Substituir todo o catálogo por esta planilha' },
+              ],
+            })}
+          </div>
+          <div class="form-actions">${button('Analisar planilha', { kind: 'primary' })}</div>
+        </form>
+      `)}
+      ${card('Colunas reconhecidas automaticamente', `
+        <p class="small muted" style="margin-top:0">O sistema identifica o cabeçalho e associa as colunas pelos nomes mais comuns. Se o layout do fornecedor for diferente, você ajusta na próxima tela.</p>
+        <div class="inline" style="margin-bottom:14px">
+          <a class="btn soft sm" href="/modelo-importacao.xlsx">Planilha modelo (.xlsx)</a>
+          <a class="btn soft sm" href="/modelo-importacao.csv">Planilha modelo (.csv)</a>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Campo</th><th>Nomes aceitos</th></tr></thead>
+          <tbody>
+            <tr><td class="strong">Descrição <span class="req" style="color:var(--bad)">*</span></td><td class="small">descrição, produto, nome, material</td></tr>
+            <tr><td class="strong">Valor unitário <span class="req" style="color:var(--bad)">*</span></td><td class="small">valor unitário, preço, custo, vlr unit</td></tr>
+            <tr><td class="strong">Marca</td><td class="small">marca, fabricante</td></tr>
+            <tr><td class="strong">Estoque</td><td class="small">estoque, saldo, quantidade</td></tr>
+            <tr><td class="strong">Código do fabricante</td><td class="small">cód fabricante, part number, MPN</td></tr>
+            <tr><td class="strong">Código de barras (EAN)</td><td class="small">EAN, código de barras, GTIN</td></tr>
+            <tr><td class="strong">Referência</td><td class="small">referência, ref</td></tr>
+            <tr><td class="strong">NCM</td><td class="small">NCM</td></tr>
+          </tbody></table></div>
+      `)}
+    `);
+  });
+
+  post('/fornecedores/:id/importar', async (ctx) => {
+    const user = requireUser(ctx);
+    const supplierId = Number(ctx.params.id);
+    const supplier = getSupplier(supplierId);
+    if (!supplier) throw new HttpError(404, 'Fornecedor não encontrado.');
+
+    const file = (ctx.files || [])[0];
+    if (!file || !file.data?.length) {
+      return redirect(`/fornecedores/${supplierId}/importar?err=${encodeURIComponent('Selecione um arquivo.')}`);
+    }
+
+    fs.mkdirSync(TMP_DIR, { recursive: true });
+    const token = crypto.randomUUID();
+    const ext = path.extname(file.filename || '').toLowerCase() || '.xlsx';
+    const tmpPath = path.join(TMP_DIR, `${token}${ext}`);
+    fs.writeFileSync(tmpPath, file.data);
+
+    return redirect(`/fornecedores/${supplierId}/importar/preview?t=${token}&name=${encodeURIComponent(file.filename || 'planilha')}&mode=${encodeURIComponent(str(ctx.fields.mode) || 'merge')}`);
+  });
+
+  routeGet('/fornecedores/:id/importar/preview', (ctx) => {
+    requireUser(ctx);
+    const supplierId = Number(ctx.params.id);
+    const supplier = getSupplier(supplierId);
+    if (!supplier) throw new HttpError(404, 'Fornecedor não encontrado.');
+
+    const token = String(ctx.url.searchParams.get('t') || '').replace(/[^a-f0-9-]/gi, '');
+    const filename = ctx.url.searchParams.get('name') || 'planilha';
+    const mode = ctx.url.searchParams.get('mode') === 'replace' ? 'replace' : 'merge';
+    const sheetIndex = Number(ctx.url.searchParams.get('sheet') || 0);
+
+    const tmpPath = findTmp(token);
+    if (!tmpPath) {
+      return redirect(`/fornecedores/${supplierId}/importar?err=${encodeURIComponent('Envio expirado. Selecione o arquivo novamente.')}`);
+    }
+
+    const preview = previewFile(fs.readFileSync(tmpPath), filename);
+    const sheet = preview.sheets[Math.min(sheetIndex, preview.sheets.length - 1)];
+
+    const sheetLinks = preview.sheets.map((s, i) => `<a class="btn sm${i === sheetIndex ? ' primary' : ''}" href="/fornecedores/${supplierId}/importar/preview?t=${token}&name=${encodeURIComponent(filename)}&mode=${mode}&sheet=${i}">${esc(s.name)} (${s.count})</a>`).join(' ');
+
+    const mapRows = FIELDS.map((f) => {
+      const options = [{ value: '', label: '— não importar —' }];
+      sheet.headers.forEach((h, i) => {
+        options.push({ value: i, label: `${letra(i)} · ${h || '(vazio)'}` });
+      });
+      const selected = sheet.mapping[f.key];
+      return `<tr>
+        <td class="strong">${esc(f.label)}${f.required ? ' <span style="color:var(--bad)">*</span>' : ''}</td>
+        <td><select name="map_${f.key}" style="width:100%;padding:6px 8px;border:1px solid #cfdae9;border-radius:6px;font:inherit">
+          ${options.map((o) => `<option value="${o.value}"${String(o.value) === String(selected ?? '') ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}
+        </select></td>
+        <td class="small muted">${selected !== undefined ? esc(sheet.sample[0]?.[f.key] ?? '') : ''}</td>
+      </tr>`;
+    }).join('');
+
+    const sampleHead = ['description', 'unit_price', 'brand', 'stock', 'manufacturer_code', 'ean', 'reference', 'ncm']
+      .filter((k) => sheet.mapping[k] !== undefined);
+    const sampleRows = sheet.sample.map((r) => `<tr>${
+      ['description', 'unit_price', 'brand', 'stock', 'manufacturer_code', 'ean', 'reference', 'ncm']
+        .filter((k) => sheet.mapping[k] !== undefined)
+        .map((k) => `<td class="small">${esc(k === 'unit_price' ? Number(r[k]).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : (r[k] ?? ''))}</td>`)
+        .join('')
+    }</tr>`).join('');
+
+    return render(ctx, 'Conferir importação', `
+      ${pageHeader({
+        title: 'Conferir importação',
+        subtitle: `${esc(filename)} · ${esc(supplier.name)}`,
+        back: { href: `/fornecedores/${supplierId}/importar`, label: 'Escolher outro arquivo' },
+      })}
+      ${preview.sheets.length > 1 ? card('Abas encontradas no arquivo', `<div class="inline">${sheetLinks}</div>`) : ''}
+      ${card('Mapeamento das colunas', `
+        <form method="post" action="/fornecedores/${supplierId}/importar/confirmar">
+          ${csrfField(ctx)}
+          <input type="hidden" name="t" value="${token}">
+          <input type="hidden" name="name" value="${esc(filename)}">
+          <input type="hidden" name="sheet" value="${sheetIndex}">
+          <input type="hidden" name="header" value="${sheet.headerRow}">
+          <input type="hidden" name="mode" value="${mode}">
+          <div class="table-wrap"><table>
+            <thead><tr><th>Campo do sistema</th><th>Coluna da planilha</th><th>Exemplo</th></tr></thead>
+            <tbody>${mapRows}</tbody></table></div>
+          <p class="small muted">Aba selecionada: <strong>${esc(sheet.name)}</strong> · cabeçalho na linha ${sheet.headerRow + 1} · ${sheet.count} produtos válidos detectados.</p>
+          ${sheet.errors.length ? `<div class="flash bad">${sheet.errors.map((e) => esc(e.message)).join('<br>')}</div>` : ''}
+          <div class="form-actions">
+            ${button(`Importar ${sheet.count} produtos`, { kind: 'primary' })}
+            ${button('Cancelar', { kind: 'ghost', href: `/fornecedores/${supplierId}` })}
+          </div>
+        </form>
+      `)}
+      ${sheet.sample.length ? card('Amostra dos dados', `
+        <div class="table-wrap"><table>
+          <thead><tr>${sampleHead.map((k) => `<th>${esc(FIELDS.find((f) => f.key === k)?.label || k)}</th>`).join('')}</tr></thead>
+          <tbody>${sampleRows}</tbody></table></div>
+        <p class="small muted">Primeiras ${sheet.sample.length} linhas válidas.</p>
+      `, { flush: true }) : ''}
+    `);
+  });
+
+  post('/fornecedores/:id/importar/confirmar', (ctx) => {
+    const user = requireUser(ctx);
+    const supplierId = Number(ctx.params.id);
+    const supplier = getSupplier(supplierId);
+    if (!supplier) throw new HttpError(404, 'Fornecedor não encontrado.');
+
+    const token = str(ctx.fields.t).replace(/[^a-f0-9-]/gi, '');
+    const filename = str(ctx.fields.name) || 'planilha';
+    const mode = str(ctx.fields.mode) === 'replace' ? 'replace' : 'merge';
+    const sheetIndex = Number(str(ctx.fields.sheet) || 0);
+
+    const tmpPath = findTmp(token);
+    if (!tmpPath) {
+      return redirect(`/fornecedores/${supplierId}/importar?err=${encodeURIComponent('Envio expirado. Selecione o arquivo novamente.')}`);
+    }
+
+    const parsed = readTable(fs.readFileSync(tmpPath), filename);
+    const target = parsed.sheets[Math.min(sheetIndex, parsed.sheets.length - 1)];
+
+    const mapping = {};
+    for (const f of FIELDS) {
+      const v = str(ctx.fields[`map_${f.key}`]);
+      if (v !== '') mapping[f.key] = Number(v);
+    }
+
+    if (mapping.description === undefined || mapping.unit_price === undefined) {
+      return redirect(`/fornecedores/${supplierId}/importar?err=${encodeURIComponent('É obrigatório mapear Descrição e Valor unitário.')}`);
+    }
+
+    const headerRaw = str(ctx.fields.header);
+    const headerRow = headerRaw === '' ? detectMapping(target.rows).headerRow : Number(headerRaw);
+    const { records } = extractRecords(target.rows, mapping, headerRow);
+
+    const result = importProducts({
+      supplierId, userId: user.id, filename, mode, records, mapping,
+    });
+
+    saveMapping(supplierId, target.name, headerRow, mapping);
+    try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+    audit(user.id, 'supplier.import', 'suppliers', supplierId, `${result.inserted} novos / ${result.updated} atualizados`);
+
+    const msg = `Importação concluída: ${result.inserted} novos, ${result.updated} atualizados, ${result.skipped} sem alteração.`;
+    return redirect(`/fornecedores/${supplierId}?msg=${encodeURIComponent(msg)}`);
+  });
+
+  // ---------------------------------------------------------------- modelo
+  routeGet('/modelo-importacao.xlsx', (ctx) => {
+    requireUser(ctx);
+    return download('modelo_importacao_produtos.xlsx', buildModeloXlsx());
+  });
+
+  routeGet('/modelo-importacao.csv', (ctx) => {
+    requireUser(ctx);
+    return download('modelo_importacao_produtos.csv', buildModeloCsv(), 'text/csv; charset=utf-8');
+  });
+
+  // ---------------------------------------------------------------- produtos
+  routeGet('/produtos', (ctx) => {
+    requireUser(ctx);
+    const q = ctx.url.searchParams.get('q') || '';
+    const fornecedor = Number(ctx.url.searchParams.get('fornecedor') || 0) || null;
+    const page = Math.max(1, Number(ctx.url.searchParams.get('page') || 1));
+    const total = countProducts({ q, supplierId: fornecedor });
+    const products = searchProducts({ q, supplierId: fornecedor, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE });
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+    const rows = products.map((p) => `<tr>
+      <td class="small mono">${esc(p.internal_code || '—')}</td>
+      <td>${esc(p.description)}<div class="small muted">${[p.brand, p.ean ? `EAN ${p.ean}` : null, p.reference ? `ref ${p.reference}` : null, p.ncm ? `NCM ${p.ncm}` : null].filter(Boolean).map(esc).join(' · ')}</div></td>
+      <td class="small">${esc(p.supplier_name)}</td>
+      <td class="num">${p.unit_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+      <td class="center small">${fmtQty(p.stock)}</td>
+      <td class="right nowrap">
+        <form class="inline-form" method="post" action="/produtos/${p.id}/excluir" data-confirm="Excluir este produto do catálogo?">
+          ${csrfField(ctx)}<button class="btn sm danger">Excluir</button>
+        </form>
+      </td>
+    </tr>`).join('');
+
+    const supplierOpts = [{ value: '', label: 'Todos os fornecedores' }]
+      .concat(listSuppliers().map((s) => ({ value: s.id, label: s.name })));
+
+    const pager = pages > 1 ? `<div class="inline" style="justify-content:center;margin-top:16px">
+      ${Array.from({ length: Math.min(pages, 12) }, (_, i) => {
+        const n = i + 1;
+        return `<a class="btn sm${n === page ? ' primary' : ''}" href="/produtos?q=${encodeURIComponent(q)}&fornecedor=${fornecedor || ''}&page=${n}">${n}</a>`;
+      }).join('')}
+    </div>` : '';
+
+    return render(ctx, 'Produtos', `
+      ${pageHeader({
+        title: 'Catálogo de produtos',
+        subtitle: `${total} produto(s) encontrado(s)`,
+        actions: `<a class="btn" href="/modelo-importacao.xlsx">Baixar planilha modelo</a>`,
+      })}
+      ${flash(ctx)}
+      ${card(null, `
+        <form method="get" action="/produtos" class="inline" style="margin-bottom:16px">
+          <label class="field" style="flex:2;min-width:220px"><span>Buscar por descrição, código, EAN ou referência</span>
+            <input type="search" name="q" value="${esc(q)}" placeholder="ex.: cabo, 6881, 789..."></label>
+          <label class="field" style="flex:1;min-width:180px"><span>Fornecedor</span>
+            <select name="fornecedor">${supplierOpts.map((o) => `<option value="${o.value}"${String(o.value) === String(fornecedor ?? '') ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
+          ${button('Buscar', { kind: 'soft' })}
+        </form>
+        ${products.length
+          ? `<div class="table-wrap"><table>
+              <thead><tr><th>Código</th><th>Descrição</th><th>Fornecedor</th><th class="num">Valor unit.</th><th class="center">Estoque</th><th></th></tr></thead>
+              <tbody>${rows}</tbody></table></div>${pager}`
+          : emptyState(q ? 'Nenhum produto encontrado para esta busca.' : 'Nenhum produto no catálogo. Envie uma planilha em Fornecedores.')}
+      `, { flush: products.length > 0 })}
+    `);
+  });
+
+  post('/produtos/:id/excluir', (ctx) => {
+    const user = requireUser(ctx);
+    const id = Number(ctx.params.id);
+    const p = getProduct(id);
+    run('UPDATE products SET active = 0 WHERE id = ?', id);
+    audit(user.id, 'product.delete', 'products', id, p?.description || null);
+    return redirect(`/produtos?msg=${encodeURIComponent('Produto removido do catálogo.')}`);
+  });
+
+  // busca rapida em JSON (usada pelo seletor de produtos do orcamento)
+  routeGet('/api/produtos', (ctx) => {
+    requireUser(ctx);
+    const q = ctx.url.searchParams.get('q') || '';
+    if (q.trim().length < 2) return { type: 'json', data: [] };
+    const rows = searchProducts({ q, limit: 15 });
+    return {
+      type: 'json',
+      data: rows.map((p) => ({
+        id: p.id,
+        description: p.description,
+        supplier: p.supplier_name,
+        price: p.unit_price,
+        stock: p.stock,
+        code: p.internal_code,
+        ean: p.ean,
+      })),
+    };
+  });
+}
+
+// ---------------------------------------------------------------- auxiliares
+function letra(i) {
+  let s = '';
+  let n = i + 1;
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+function findTmp(token) {
+  if (!token) return null;
+  for (const ext of ['.xlsx', '.csv', '.txt']) {
+    const p = path.join(TMP_DIR, `${token}${ext}`);
+    if (fs.existsSync(p)) return p;
+  }
+  const dir = fs.existsSync(TMP_DIR) ? fs.readdirSync(TMP_DIR) : [];
+  const match = dir.find((f) => f.startsWith(token));
+  return match ? path.join(TMP_DIR, match) : null;
+}

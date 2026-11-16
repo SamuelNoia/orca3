@@ -1,0 +1,17 @@
+# Garante que os scripts permanecam com LF no repositorio.
+# Sem isso, o core.autocrlf do Windows pode gravar CRLF e quebrar
+# o instalar.sh e o entrypoint.sh dentro do container Linux.
+* text=auto eol=lf
+*.sh  text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.js  text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.md  text eol=lf
+Dockerfile text eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.png  binary
+*.xlsx binary
+*.zip  binary
