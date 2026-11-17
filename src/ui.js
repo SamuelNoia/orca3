@@ -23,6 +23,7 @@ const ICONS = {
   projeto: 'M3 7h6l2 2h10v11H3zM3 7V5h5l2 2',
   usuario: 'M12 12a4 4 0 100-8 4 4 0 000 8zM5 21c0-3 3.1-5 7-5s7 2 7 5',
   config: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19 12a7 7 0 00-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 00-1.7-1L14.5 2h-4l-.4 2.6a7 7 0 00-1.7 1l-2.3-1-2 3.4L6 11a7 7 0 000 2l-2 1.5 2 3.4 2.3-1a7 7 0 001.7 1l.4 2.6h4l.4-2.6a7 7 0 001.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z',
+  arquivo: 'M12 3v10m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2',
   sair: 'M15 17l5-5-5-5M20 12H9M12 3H5v18h7',
 };
 
@@ -35,6 +36,7 @@ function icon(name) {
 const NAV = [
   { href: '/', label: 'Painel', icon: 'painel', match: (p) => p === '/' },
   { href: '/orcamentos', label: 'Orçamentos', icon: 'orcamento', match: (p) => p.startsWith('/orcamentos') },
+  { href: '/arquivos', label: 'Arquivos', icon: 'arquivo', match: (p) => p.startsWith('/arquivos') },
   { href: '/projetos', label: 'Projetos', icon: 'projeto', match: (p) => p.startsWith('/projetos') },
   { href: '/clientes', label: 'Clientes', icon: 'cliente', match: (p) => p.startsWith('/clientes') },
   { href: '/fornecedores', label: 'Fornecedores', icon: 'fornecedor', match: (p) => p.startsWith('/fornecedores') },

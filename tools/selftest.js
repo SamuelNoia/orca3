@@ -831,6 +831,47 @@ async function main() {
   ok('desconto de 100% e recusado',
     String(invalido.location || '').includes('err='), String(invalido.location));
 
+  section('Arquivar documentos com descricao');
+  const formArq = await http.get(`/orcamentos/${orcId}/arquivar`);
+  ok('tela de arquivar abre', formArq.status === 200 && formArq.text.includes('Baixar e arquivar'));
+
+  const pedidoArq = await http.request('POST', `/orcamentos/${orcId}/arquivar`, {
+    form: { _csrf: tokenOf(formArq.text), description: 'PROPOSTA ENVIADA AO CLIENTE' },
+  });
+  ok('arquivar devolve a planilha na hora', pedidoArq.status === 200 && pedidoArq.buffer[0] === 0x50 && pedidoArq.buffer[1] === 0x4b);
+
+  const dbF = new DatabaseSync(DB_PATH, { readOnly: true });
+  const guardado = dbF.prepare('SELECT id, description, size, created_at, kind FROM quote_files ORDER BY id DESC LIMIT 1').get();
+  dbF.close();
+  ok('arquivo guardado com a descricao', guardado && guardado.description === 'PROPOSTA ENVIADA AO CLIENTE', guardado?.description);
+  ok('arquivo guardado com data e hora', !!guardado?.created_at && guardado.created_at.includes('T'), guardado?.created_at);
+  ok('arquivo guardado com conteudo', (guardado?.size || 0) > 1000, `${guardado?.size} bytes`);
+
+  const listaArq = await http.get('/arquivos');
+  ok('pagina de arquivos lista o item', listaArq.status === 200 && listaArq.text.includes('PROPOSTA ENVIADA AO CLIENTE'));
+  ok('pagina de arquivos mostra data/hora',
+    /\d{2}\/\d{2}\/\d{4}/.test(listaArq.text));
+
+  const downloadArq = await http.get(`/arquivos/${guardado.id}/download`);
+  ok('download do arquivo guardado', downloadArq.status === 200 && downloadArq.buffer[0] === 0x50);
+
+  const formArqProj = await http.get(`/projetos/${projId}/arquivar`);
+  ok('arquivar pacote do projeto abre', formArqProj.status === 200);
+  const pacote = await http.request('POST', `/projetos/${projId}/arquivar`, {
+    form: { _csrf: tokenOf(formArqProj.text), description: 'PACOTE DO PREGAO' },
+  });
+  ok('pacote do projeto gerado e guardado', pacote.status === 200 && pacote.buffer[0] === 0x50);
+
+  const dbF2 = new DatabaseSync(DB_PATH, { readOnly: true });
+  const zipGuardado = dbF2.prepare("SELECT size FROM quote_files WHERE kind = 'zip' ORDER BY id DESC LIMIT 1").get();
+  dbF2.close();
+  ok('pacote tem conteudo guardado', (zipGuardado?.size || 0) > 1000, `${zipGuardado?.size} bytes`);
+
+  const excluirArq = await http.post(`/arquivos/${guardado.id}/excluir`, {
+    _csrf: tokenOf(listaArq.text),
+  });
+  ok('excluir arquivo guardado', excluirArq.status === 303);
+
   section('Estrutura das paginas');
   const paginas = [
     '/', '/clientes', '/clientes/novo', '/fornecedores', '/fornecedores/novo',
@@ -860,6 +901,61 @@ async function main() {
   ok('logout funciona', logout.status === 303);
   const aposLogout = await http.get('/orcamentos');
   ok('sessao encerrada', aposLogout.status === 303);
+
+  section('Backup e restauracao do banco');
+  const hb = new Http(BASE);
+  const l0 = await hb.get('/login');
+  await hb.post('/login', { _csrf: tokenOf(l0.text), email: 'admin@teste.local', password: 'senha12345', next: '/' });
+
+  const conf = await hb.get('/configuracoes');
+  ok('configuracoes tem area de backup', conf.status === 200 && conf.text.includes('Backup do banco de dados'));
+
+  const backup = await hb.get('/configuracoes/backup.db');
+  ok('baixa o backup do banco',
+    backup.status === 200 && backup.buffer.subarray(0, 15).toString('latin1') === 'SQLite format 3',
+    `status=${backup.status} bytes=${backup.buffer.length}`);
+  ok('backup nao esta vazio', backup.buffer.length > 1000);
+
+  const ruim = await hb.request('POST', '/configuracoes/restaurar', {
+    form: { _csrf: tokenOf(conf.text) },
+    files: [{ field: 'file', filename: 'falso.db', type: 'application/octet-stream', data: Buffer.from('isto nao e um banco') }],
+  });
+  ok('arquivo invalido e recusado',
+    ruim.status === 303 && String(ruim.location).includes('err='), String(ruim.location));
+
+  const dbAntes = new DatabaseSync(DB_PATH, { readOnly: true });
+  const nUsers = dbAntes.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+  const nFiles = dbAntes.prepare('SELECT COUNT(*) AS n FROM quote_files').get().n;
+  dbAntes.close();
+
+  const restore = await hb.request('POST', '/configuracoes/restaurar', {
+    form: { _csrf: tokenOf(conf.text) },
+    files: [{ field: 'file', filename: 'backup.db', type: 'application/x-sqlite3', data: backup.buffer }],
+  });
+  ok('restauracao aceita o backup',
+    restore.status === 303 && String(restore.location).includes('/login'),
+    `status=${restore.status} -> ${restore.location}`);
+
+  const semSessaoPosRestore = await hb.get('/orcamentos');
+  ok('sessao encerrada apos restaurar', semSessaoPosRestore.status === 303);
+
+  const dbDepois = new DatabaseSync(DB_PATH, { readOnly: true });
+  const nUsers2 = dbDepois.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+  const nFiles2 = dbDepois.prepare('SELECT COUNT(*) AS n FROM quote_files').get().n;
+  dbDepois.close();
+  ok('dados preservados apos restaurar',
+    nUsers2 === nUsers && nFiles2 === nFiles,
+    `${nUsers2}/${nUsers} usuarios, ${nFiles2}/${nFiles} arquivos`);
+
+  const pastaBackups = path.join(TMP, 'backups');
+  const zips = fs.existsSync(pastaBackups) ? fs.readdirSync(pastaBackups) : [];
+  ok('copia do banco anterior guardada', zips.some((f) => f.startsWith('antes-restauracao')), zips.join(', '));
+
+  const lr = await hb.get('/login');
+  const lgFinal = await hb.post('/login', {
+    _csrf: tokenOf(lr.text), email: 'admin@teste.local', password: 'senha12345', next: '/',
+  });
+  ok('login funciona com o banco restaurado', lgFinal.status === 303);
 }
 
 main()

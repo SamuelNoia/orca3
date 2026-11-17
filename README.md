@@ -129,6 +129,25 @@ bancários. A página sai **limpa** — sem menu, sem título da plataforma, sem
 sem URL. A margem da página é zerada no CSS, o que também elimina o cabeçalho e o
 rodapé automáticos do navegador.
 
+Tudo é **gerado na hora a partir do banco** (XLSX, comparativo, ZIP e o HTML do PDF).
+Nada fica armazenado, a não ser que você use **Baixar e arquivar**.
+
+### Arquivos guardados
+
+Para ter o histórico do que foi entregue ao cliente, use **Baixar e arquivar** no
+orçamento ou no projeto:
+
+- pede uma **descrição** antes de guardar;
+- registra **data e hora** e quem guardou;
+- o arquivo fica **dentro do banco**, então entra no backup;
+- aparece em **Arquivos**, com download e exclusão.
+
+Assim o orçamento pode continuar sendo editado — a cópia guardada fica congelada
+como foi enviada.
+
+> O PDF não é guardado porque quem o produz é o navegador, no momento de imprimir.
+> Para ter a versão em PDF arquivada, salve o arquivo no seu computador.
+
 ### 5 layouts
 
 ![Cinco layouts de orçamento](docs/layouts.svg)
@@ -327,11 +346,27 @@ com uma diferente. Troque em *Usuários → Administrador*.
 
 ---
 
-## Backup
+## Backup e restauração
 
-Tudo está em `data/` — o banco é um único arquivo SQLite. Copie a pasta com o
-container parado e você tem o backup completo: clientes, fornecedores, catálogos,
-orçamentos e usuários.
+Tudo está em `data/` — o banco é um único arquivo SQLite: clientes, fornecedores,
+catálogos, orçamentos, usuários e os documentos guardados.
+
+**Pela interface** (administrador): *Configurações → Backup do banco de dados →
+Baixar backup*. O download gera uma cópia **consistente mesmo com o sistema em uso**
+(usa `VACUUM INTO`, não uma cópia crua do arquivo).
+
+**Restaurar:** *Configurações → Restaurar backup*, envie o arquivo `.db`. O banco
+atual é substituído — antes disso, uma cópia dele é salva em
+`data/backups/antes-restauracao-*.db`. Depois de restaurar você é desconectado e
+entra com um usuário do backup.
+
+**Pela linha de comando** (com o container parado):
+
+```bash
+docker compose stop
+cp data/orcamentos.db data/backup-$(date +%F).db
+docker compose start
+```
 
 ---
 
@@ -391,11 +426,10 @@ orca3/
 │   ├── importer.js           detecção de colunas e importação
 │   ├── calc.js               motor de margem, despesas e serviço
 │   ├── clone.js              clonagem (base do perdedor)
-│   ├── print.js              folha A4 para PDF
-│   ├── exporter.js           planilha e comparativo
+│   ├── print.js              folha A4 para PDF│   ├── exporter.js           planilha e comparativo
 │   ├── repo.js               consultas de dados
 │   ├── ui.js                 componentes de tela
-│   └── routes/               telas: auth, admin, catalog, project, quotes
+│   └── routes/               telas: auth, admin, catalog, project, arquivos, quotes
 └── tools/
     ├── seed-inicial.js       base zerada + 1 produto de teste
     ├── seed-demo.js          carrega uma planilha consolidada
@@ -412,7 +446,7 @@ orca3/
 node tools/selftest.js
 ```
 
-**149 verificações** de ponta a ponta, num banco temporário isolado: login e
+**196 verificações** de ponta a ponta, num banco temporário isolado: login e
 permissões, CSRF, cadastros, importação de dois layouts de planilha diferentes,
 planilha modelo (ida e volta), preço de venda manual, orçamento sem serviço, os
 5 layouts, clonagem com ajuste, projeto com vencedor e perdedores, PDF de todas as

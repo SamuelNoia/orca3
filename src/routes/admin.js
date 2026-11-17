@@ -1,9 +1,13 @@
-import { get as routeGet, post, str, num, bool, htmlPage, redirect, HttpError } from '../web.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { get as routeGet, post, str, num, bool, htmlPage, redirect, HttpError, download } from '../web.js';
 import {
   requireAdmin, requireUser, listUsers, getUser, countAdmins, createUser,
   hashPassword, passwordProblems,
 } from '../auth.js';
-import { get, run, all, setting, setSetting, nowIso, audit } from '../db.js';
+import { get, run, all, setting, setSetting, nowIso, audit, db, openDb, closeDb } from '../db.js';
+import { DB_FILE, TMP_DIR } from '../config.js';
 import { ownSupplier, saveSupplier } from '../repo.js';
 import { layoutOptions } from '../layouts.js';
 import {
@@ -13,6 +17,17 @@ import {
 
 function render(ctx, title, body) {
   return htmlPage(layout(ctx, { title, body }));
+}
+
+function tamanhoBanco() {
+  try {
+    const b = fs.statSync(DB_FILE).size;
+    return b >= 1024 * 1024
+      ? `${(b / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} MB`
+      : `${(b / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} KB`;
+  } catch {
+    return '—';
+  }
 }
 
 function userForm(ctx, { user = null, values = {}, error = '' }) {
@@ -250,7 +265,42 @@ export function registerAdminRoutes() {
           </div>
         `)}
         <div class="form-actions">${button('Salvar configurações', { kind: 'primary' })}</div>
-      </form>`;
+      </form>
+      ${card('Backup do banco de dados', `
+        <p class="small muted" style="margin-top:0">
+          O banco é um arquivo único (<code>${esc(DB_FILE)}</code>). O download gera uma cópia
+          consistente — inclusive com o que estiver em uso agora.
+        </p>
+        <dl class="summary" style="max-width:420px">
+          <div class="row"><span>Tamanho atual</span><span>${tamanhoBanco()}</span></div>
+          <div class="row"><span>Documentos guardados</span><span>${get('SELECT COUNT(*) AS n FROM quote_files')?.n || 0}</span></div>
+        </dl>
+        <div class="form-actions">
+          ${button('Baixar backup do banco', { kind: 'primary', href: '/configuracoes/backup.db' })}
+        </div>
+        <p class="small muted">
+          Guarde o arquivo fora do servidor (pen drive, nuvem). É o backup completo:
+          clientes, fornecedores, produtos, orçamentos, usuários e arquivos guardados.
+        </p>
+      `)}
+      ${card('Restaurar backup', `
+        <p class="small muted" style="margin-top:0">
+          Envie um arquivo <code>.db</code> gerado por esta plataforma. O banco atual é
+          <strong>substituído</strong> — uma cópia dele é salva antes, em <code>data/backups/</code>.
+        </p>
+        <form method="post" action="/configuracoes/restaurar" enctype="multipart/form-data"
+              data-confirm="Substituir o banco atual pelo backup enviado?">
+          ${csrfField(ctx)}
+          <label class="field">
+            <span>Arquivo de backup (.db) <b class="req">*</b></span>
+            <input type="file" name="file" accept=".db,.sqlite,.sqlite3" required>
+            <small>Você será desconectado e precisará entrar com um usuário do backup.</small>
+          </label>
+          <div class="form-actions">
+            <button class="btn danger" type="submit">Restaurar backup</button>
+          </div>
+        </form>
+      `)}`;
     return render(ctx, 'Configurações', `
       ${pageHeader({ title: 'Configurações', subtitle: 'Empresa principal, padrões de cálculo e identidade do sistema.' })}
       ${flash(ctx)}
@@ -283,5 +333,106 @@ export function registerAdminRoutes() {
     });
     audit(ctx.user.id, 'settings.update', 'settings', null, null);
     return redirect(`/configuracoes?msg=${encodeURIComponent('Configurações salvas.')}`);
+  });
+
+  // ------------------------------------------------------------ backup
+  routeGet('/configuracoes/backup.db', (ctx) => {
+    requireAdmin(ctx);
+    fs.mkdirSync(TMP_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+    const tmp = path.join(TMP_DIR, `backup-${Date.now()}.db`);
+
+    try {
+      // VACUUM INTO gera uma copia consistente mesmo com o banco em uso
+      db().exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
+      const buf = fs.readFileSync(tmp);
+      audit(ctx.user.id, 'backup.download', 'settings', null, `${buf.length} bytes`);
+      return download(`orcamentos-backup-${stamp}.db`, buf, 'application/x-sqlite3');
+    } catch (err) {
+      throw new HttpError(500, `Não foi possível gerar o backup: ${err.message}`);
+    } finally {
+      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* ignore */ }
+    }
+  });
+
+  post('/configuracoes/restaurar', (ctx) => {
+    const user = requireAdmin(ctx);
+    const voltarErro = (msg) => redirect(`/configuracoes?err=${encodeURIComponent(msg)}`);
+
+    const arquivo = (ctx.files || [])[0];
+    if (!arquivo || !arquivo.data || !arquivo.data.length) {
+      return voltarErro('Selecione o arquivo de backup (.db).');
+    }
+
+    const dados = arquivo.data;
+    const assinatura = dados.subarray(0, 16).toString('latin1');
+    if (!assinatura.startsWith('SQLite format 3')) {
+      return voltarErro('O arquivo enviado não é um banco SQLite válido.');
+    }
+
+    fs.mkdirSync(TMP_DIR, { recursive: true });
+    const tmp = path.join(TMP_DIR, `restore-${Date.now()}.db`);
+    fs.writeFileSync(tmp, dados);
+
+    // confere se o arquivo tem as tabelas da plataforma
+    let valido = false;
+    try {
+      const teste = new DatabaseSync(tmp, { readOnly: true });
+      const tabelas = teste.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
+      teste.close();
+      valido = ['users', 'quotes', 'products', 'clients', 'suppliers'].every((t) => tabelas.includes(t));
+    } catch {
+      valido = false;
+    }
+
+    if (!valido) {
+      try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+      return voltarErro('Este arquivo não parece ser um backup da Central de Orçamentos.');
+    }
+
+    // guarda o banco atual antes de substituir
+    const pastaBackups = path.join(path.dirname(DB_FILE), 'backups');
+    fs.mkdirSync(pastaBackups, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+    const anterior = path.join(pastaBackups, `antes-restauracao-${stamp}.db`);
+    try {
+      db().exec(`VACUUM INTO '${anterior.replace(/'/g, "''")}'`);
+    } catch {
+      try { fs.copyFileSync(DB_FILE, anterior); } catch { /* segue sem backup */ }
+    }
+
+    // troca o arquivo
+    const antigo = `${DB_FILE}.substituido`;
+    try {
+      closeDb();
+      try { if (fs.existsSync(antigo)) fs.unlinkSync(antigo); } catch { /* ignore */ }
+      fs.renameSync(DB_FILE, antigo);
+      fs.copyFileSync(tmp, DB_FILE);
+      // os arquivos -wal/-shm pertenciam ao banco antigo
+      for (const ext of ['-wal', '-shm']) {
+        try { if (fs.existsSync(DB_FILE + ext)) fs.unlinkSync(DB_FILE + ext); } catch { /* ignore */ }
+      }
+      openDb(DB_FILE);
+    } catch (err) {
+      // tenta voltar ao banco anterior
+      try {
+        if (fs.existsSync(antigo)) {
+          try { fs.unlinkSync(DB_FILE); } catch { /* ignore */ }
+          fs.renameSync(antigo, DB_FILE);
+        }
+        openDb(DB_FILE);
+      } catch { /* ignore */ }
+      try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+      return voltarErro(`Não foi possível restaurar: ${err.message}`);
+    }
+
+    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+    try { fs.unlinkSync(antigo); } catch { /* ignore */ }
+
+    try { audit(user.id, 'backup.restore', 'settings', null, arquivo.filename || 'backup.db'); } catch { /* ignore */ }
+
+    // as sessões vieram do backup: precisa entrar de novo
+    ctx.setCookies.push({ name: 'sid', value: '', maxAge: 0 });
+    return redirect(`/login?msg=${encodeURIComponent('Backup restaurado. Entre com um usuário do arquivo restaurado.')}`);
   });
 }

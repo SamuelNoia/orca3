@@ -348,6 +348,7 @@ export function registerQuoteRoutes() {
         subtitle: `${esc(client?.name || '')}${project ? ` · <a href="/projetos/${project.id}">${esc(project.name)}</a>` : ''} ${statusBadge(quote.status)}`,
         back: { href: '/orcamentos', label: 'Orçamentos' },
         actions: `<a class="btn primary" href="/orcamentos/${quote.id}/exportar.xlsx">Gerar planilha</a>
+                  <a class="btn" href="/orcamentos/${quote.id}/arquivar">Baixar e arquivar</a>
                   <a class="btn" href="/orcamentos/${quote.id}/comparativo.xlsx">Comparativo</a>
                   <a class="btn" href="/orcamentos/${quote.id}/imprimir">PDF / Imprimir</a>
                   <a class="btn" href="/orcamentos/${quote.id}/clonar" title="Criar outro orçamento a partir deste, trocando o fornecedor">Clonar</a>`,

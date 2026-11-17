@@ -156,6 +156,7 @@ export function registerProjectRoutes() {
       <div class="inline">
         <a class="btn primary" href="/projetos/${project.id}/imprimir">PDF de todas as propostas</a>
         <a class="btn" href="/projetos/${project.id}/planilhas.zip">Baixar planilhas (.zip)</a>
+        <a class="btn" href="/projetos/${project.id}/arquivar">Baixar e arquivar</a>
         <a class="btn" href="/projetos/${project.id}/exportar.xlsx">Planilha consolidada</a>
       </div>
       <p class="small muted" style="margin:14px 0 0">

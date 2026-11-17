@@ -196,6 +196,23 @@ CREATE TABLE IF NOT EXISTS audit_log (
   detail     TEXT,
   created_at TEXT NOT NULL
 );
+
+-- documentos gerados e guardados (planilhas arquivadas)
+CREATE TABLE IF NOT EXISTS quote_files (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  quote_id    INTEGER REFERENCES quotes(id) ON DELETE CASCADE,
+  project_id  INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,          -- xlsx | zip
+  description TEXT NOT NULL,
+  filename    TEXT NOT NULL,
+  mime        TEXT NOT NULL,
+  size        INTEGER NOT NULL DEFAULT 0,
+  content     BLOB NOT NULL,
+  created_at  TEXT NOT NULL,
+  created_by  INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_files_quote   ON quote_files(quote_id);
+CREATE INDEX IF NOT EXISTS ix_files_project ON quote_files(project_id);
 `;
 
 export const DEFAULTS = {
