@@ -242,8 +242,30 @@ Opções (para quem roda o `.ps1` direto):
 **Como usar depois:** duplo clique no atalho *Central de Orçamentos*. Abre uma
 janela preta (o servidor) e o navegador. Fechar a janela encerra o sistema.
 
-**Atualizar:** rode o instalador de novo. Ele troca o código e **preserva** a pasta
-`data` — seus orçamentos, clientes e fornecedores continuam lá.
+**Atualizar:** duplo clique em **`ATUALIZAR.cmd`**, ou no PowerShell:
+
+```powershell
+$f = "$env:TEMP\atualizar-orcamentos.ps1"
+iwr -UseBasicParsing https://raw.githubusercontent.com/SamuelNoia/orca3/main/atualizar-windows.ps1 -OutFile $f
+powershell -ExecutionPolicy Bypass -File $f
+```
+
+O atualizador faz **backup do banco antes de tudo**, compara a versão instalada com
+a do GitHub e substitui apenas os arquivos do sistema. A pasta `data` e o
+`iniciar.cmd` (que tem a sua porta) ficam intactos. Se o sistema estava aberto, ele
+fecha e reabre.
+
+| Opção | Para que serve |
+|---|---|
+| `-Pasta` | instalação em outro lugar |
+| `-Origem` | atualiza de uma pasta local, sem baixar |
+| `-SemBackup` | não gera o `.zip` de backup |
+| `-Forcar` | atualiza mesmo se a versão for a mesma |
+| `-Iniciar` | abre o sistema no final |
+| `-SemPausa` | não espera Enter no fim |
+
+Se já estiver na versão mais recente, ele avisa e não altera nada. Os backups ficam
+em `backups/` dentro da pasta de instalação.
 
 **Desinstalar:** duplo clique em **`DESINSTALAR.cmd`**, ou no PowerShell:
 
@@ -352,6 +374,8 @@ orca3/
 ├── iniciar.cmd               execução no Windows
 ├── INSTALAR.cmd              instalador Windows (duplo clique)
 ├── instalar-windows.ps1      instalador Windows (script)
+├── ATUALIZAR.cmd             atualizador Windows (duplo clique)
+├── atualizar-windows.ps1     atualizador Windows (script)
 ├── DESINSTALAR.cmd           desinstalador Windows (duplo clique)
 ├── desinstalar-windows.ps1   desinstalador Windows (script)
 ├── instalar.sh               instalação em um comando (Linux)
