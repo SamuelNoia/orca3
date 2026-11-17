@@ -193,11 +193,16 @@ docker compose -f docker-compose.ghcr.yml up -d
 
 ### No Windows
 
-**Instalação automática.** Abra o PowerShell e cole a linha abaixo:
+**Instalação automática.** Abra o PowerShell e cole as três linhas:
 
 ```powershell
-iwr -UseBasicParsing https://raw.githubusercontent.com/SamuelNoia/orca3/main/instalar-windows.ps1 | iex
+$f = "$env:TEMP\instalar-orcamentos.ps1"
+iwr -UseBasicParsing https://raw.githubusercontent.com/SamuelNoia/orca3/main/instalar-windows.ps1 -OutFile $f
+powershell -ExecutionPolicy Bypass -File $f
 ```
+
+> Evite `iwr ... | iex`: o `iex` recebe o **objeto** da resposta em vez do texto e o
+> script quebra ao ler os parâmetros.
 
 Quem preferir: baixe o projeto e dê duplo clique em **`INSTALAR.cmd`**.
 
@@ -234,8 +239,24 @@ janela preta (o servidor) e o navegador. Fechar a janela encerra o sistema.
 **Atualizar:** rode o instalador de novo. Ele troca o código e **preserva** a pasta
 `data` — seus orçamentos, clientes e fornecedores continuam lá.
 
-**Desinstalar:** apague a pasta de instalação. Antes, copie a subpasta `data` se
-quiser guardar o banco.
+**Desinstalar:** duplo clique em **`DESINSTALAR.cmd`**, ou no PowerShell:
+
+```powershell
+$f = "$env:TEMP\desinstalar-orcamentos.ps1"
+iwr -UseBasicParsing https://raw.githubusercontent.com/SamuelNoia/orca3/main/desinstalar-windows.ps1 -OutFile $f
+powershell -ExecutionPolicy Bypass -File $f
+```
+
+O desinstalador para o sistema, **gera um backup `.zip` do banco**, remove o atalho
+e apaga a pasta. Antes de apagar, ele pede confirmação e mostra o que vai fazer.
+
+| Opção | Para que serve |
+|---|---|
+| `-Pasta` | instalação em outro lugar |
+| `-ManterDados` | apaga o programa e **mantém** a pasta `data` |
+| `-SemBackup` | não gera o `.zip` de backup |
+| `-Forcar` | não pede confirmação |
+| `-SemPausa` | não espera Enter no fim |
 
 **Requisitos:** Windows 10 ou 11, PowerShell 5.1 (já vem) e internet na instalação.
 Depois de instalado, funciona sem internet.
@@ -325,6 +346,8 @@ orca3/
 ├── iniciar.cmd               execução no Windows
 ├── INSTALAR.cmd              instalador Windows (duplo clique)
 ├── instalar-windows.ps1      instalador Windows (script)
+├── DESINSTALAR.cmd           desinstalador Windows (duplo clique)
+├── desinstalar-windows.ps1   desinstalador Windows (script)
 ├── instalar.sh               instalação em um comando (Linux)
 ├── docs/                     imagens de apresentação
 ├── public/                   CSS e JS da interface

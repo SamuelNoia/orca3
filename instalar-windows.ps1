@@ -208,6 +208,7 @@ try {
         'Dockerfile', '.dockerignore', '.gitignore',
         'docker-compose.yml', 'docker-compose.ghcr.yml', 'docker-compose.casaos.yml',
         'instalar.sh', 'instalar-windows.ps1', 'INSTALAR.cmd', 'iniciar.cmd',
+        'desinstalar-windows.ps1', 'DESINSTALAR.cmd',
         'modelo_importacao_produtos.xlsx', 'modelo_importacao_produtos.csv'
     )
 
