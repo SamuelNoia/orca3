@@ -62,6 +62,12 @@ Campos reconhecidos: descrição, valor unitário, marca, estoque, código do fa
 código de barras (EAN), referência e NCM. Também dá para **criar e editar produto**
 manualmente, sem planilha.
 
+**Ajustar preços em massa:** no catálogo, escolha o fornecedor e clique em
+**Ajustar preços**. Você informa se é acréscimo ou desconto e o percentual — o
+sistema mostra quantos produtos serão afetados e a soma atual antes de aplicar.
+Preços zerados são ignorados e cada ajuste fica registrado no histórico do
+fornecedor.
+
 ### Comparação de preços
 
 Ao incluir um item, o sistema procura o **mesmo produto nos outros fornecedores**

@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { get as routeGet, post, str, num, bool, htmlPage, redirect, HttpError, download } from '../web.js';
 import { requireUser } from '../auth.js';
-import { get, run, all, nowIso, audit } from '../db.js';
+import { get, run, all, tx, nowIso, audit } from '../db.js';
 import { TMP_DIR } from '../config.js';
 import { buildModeloXlsx, buildModeloCsv } from '../modelo.js';
 import { layoutOptions, layoutInfo, layoutExampleLinks, LAYOUTS } from '../layouts.js';
@@ -20,7 +20,7 @@ import {
   layout, esc, field, select, textarea, card, pageHeader, button, csrfField,
   badge, emptyState, flash, statusBadge,
 } from '../ui.js';
-import { fmtQty } from '../calc.js';
+import { fmtQty, fmtMoney } from '../calc.js';
 
 function render(ctx, title, body, wide = false) {
   return htmlPage(layout(ctx, { title, body, wide }));
@@ -585,6 +585,10 @@ export function registerCatalogRoutes() {
           <label class="field" style="flex:1;min-width:180px"><span>Fornecedor</span>
             <select name="fornecedor">${supplierOpts.map((o) => `<option value="${o.value}"${String(o.value) === String(fornecedor ?? '') ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
           ${button('Buscar', { kind: 'soft' })}
+          <button class="btn" type="submit" formaction="/produtos/reajustar" formmethod="get"
+                  title="Aplicar desconto ou acréscimo a todos os itens do fornecedor selecionado">
+            Ajustar preços
+          </button>
         </form>
         ${products.length
           ? `<div class="table-wrap"><table>
@@ -645,6 +649,145 @@ export function registerCatalogRoutes() {
     requireUser(ctx);
     const fornecedor = Number(ctx.url.searchParams.get('fornecedor') || 0) || '';
     return produtoForm(ctx, { values: { supplier_id: fornecedor, unit: 'UN', stock: 0 } });
+  });
+
+  // ---------------------------------------------------------------- ajuste em massa
+  const estatisticas = (supplierId) => get(
+    `SELECT COUNT(*) AS n, COALESCE(MIN(unit_price),0) AS menor,
+            COALESCE(MAX(unit_price),0) AS maior, COALESCE(SUM(unit_price),0) AS soma
+       FROM products WHERE supplier_id = ? AND active = 1 AND unit_price > 0`,
+    supplierId,
+  );
+
+  routeGet('/produtos/reajustar', (ctx) => {
+    requireUser(ctx);
+    const supplierId = Number(ctx.url.searchParams.get('fornecedor') || 0);
+    const supplier = supplierId ? getSupplier(supplierId) : null;
+    const erro = ctx.url.searchParams.get('err');
+
+    if (!supplier) {
+      return render(ctx, 'Ajustar preços do catálogo', `
+        ${pageHeader({
+          title: 'Ajustar preços do catálogo',
+          subtitle: 'Aplicar desconto ou acréscimo a todos os itens de um fornecedor.',
+          back: { href: '/produtos', label: 'Catálogo' },
+        })}
+        ${card(null, `
+          <div class="flash bad">Selecione um fornecedor no filtro do catálogo antes de ajustar os preços.</div>
+          ${button('Voltar ao catálogo', { kind: 'primary', href: '/produtos' })}
+        `)}
+      `);
+    }
+
+    const st = estatisticas(supplierId);
+
+    return render(ctx, 'Ajustar preços do catálogo', `
+      ${pageHeader({
+        title: 'Ajustar preços do catálogo',
+        subtitle: `Fornecedor: <strong>${esc(supplier.name)}</strong>`,
+        back: { href: `/produtos?fornecedor=${supplierId}`, label: 'Catálogo' },
+      })}
+      ${flash(ctx)}
+      <div class="grid-2">
+        <div>
+          ${card(null, `
+            <form method="post" action="/produtos/reajustar" data-confirm="Aplicar o ajuste a todos os itens deste fornecedor?">
+              ${csrfField(ctx)}
+              <input type="hidden" name="supplier_id" value="${supplierId}">
+              <div class="form-grid">
+                ${select({
+                  label: 'O que fazer',
+                  name: 'direction',
+                  value: 'aumento',
+                  options: [
+                    { value: 'aumento', label: 'Acréscimo — aumentar todos os preços' },
+                    { value: 'desconto', label: 'Desconto — reduzir todos os preços' },
+                  ],
+                })}
+                ${field({
+                  label: 'Percentual (%)',
+                  name: 'pct',
+                  type: 'number',
+                  step: '0.01',
+                  min: '0.01',
+                  value: '10',
+                  required: true,
+                  hint: 'Aplicado sobre o valor atual de cada item.',
+                })}
+              </div>
+              <p class="small muted" style="margin:14px 0 0">
+                Vale para <strong>${st.n} produto(s)</strong> ativos deste fornecedor.
+                O preço de cada item passa a ser o valor atual vezes (1 ± percentual).
+              </p>
+              <div class="form-actions">
+                ${button('Aplicar ajuste', { kind: 'primary' })}
+                ${button('Cancelar', { kind: 'ghost', href: `/produtos?fornecedor=${supplierId}` })}
+              </div>
+            </form>
+          `)}
+        </div>
+        <div>
+          ${card('Situação atual', `
+            <dl class="summary">
+              <div class="row"><span>Produtos com preço</span><span>${st.n}</span></div>
+              <div class="row"><span>Menor preço</span><span>${fmtMoney(st.menor)}</span></div>
+              <div class="row"><span>Maior preço</span><span>${fmtMoney(st.maior)}</span></div>
+              <div class="row total"><span>Soma dos preços</span><span>${fmtMoney(st.soma)}</span></div>
+            </dl>
+            <p class="small muted" style="margin:14px 0 0">
+              Preços zerados são ignorados. O ajuste não mexe em estoque, código ou descrição.
+            </p>
+          `)}
+        </div>
+      </div>
+    `, true);
+  });
+
+  post('/produtos/reajustar', (ctx) => {
+    const user = requireUser(ctx);
+    const supplierId = Number(str(ctx.fields.supplier_id));
+    const supplier = supplierId ? getSupplier(supplierId) : null;
+    if (!supplier) {
+      return redirect(`/produtos?err=${encodeURIComponent('Fornecedor inválido.')}`);
+    }
+
+    const direcao = str(ctx.fields.direction) === 'desconto' ? 'desconto' : 'aumento';
+    const pct = num(ctx.fields.pct, 0);
+
+    if (!(pct > 0)) {
+      return redirect(`/produtos/reajustar?fornecedor=${supplierId}&err=${encodeURIComponent('Informe um percentual maior que zero.')}`);
+    }
+    if (direcao === 'desconto' && pct >= 100) {
+      return redirect(`/produtos/reajustar?fornecedor=${supplierId}&err=${encodeURIComponent('Desconto deve ser menor que 100%.')}`);
+    }
+
+    const fator = direcao === 'desconto' ? (1 - pct / 100) : (1 + pct / 100);
+    const antes = estatisticas(supplierId);
+
+    const alterados = tx(() => {
+      const r = run(
+        `UPDATE products
+            SET unit_price = MAX(0.01, ROUND(unit_price * ?, 2)),
+                updated_at = ?
+          WHERE supplier_id = ? AND active = 1 AND unit_price > 0`,
+        fator, nowIso(), supplierId,
+      );
+      run(
+        `INSERT INTO import_batches
+           (supplier_id, user_id, filename, mode, rows_total, rows_imported, rows_updated, rows_skipped, created_at)
+         VALUES (?,?,?,?,?,?,?,0,?)`,
+        supplierId, user.id,
+        `Ajuste de preços: ${direcao} de ${pct}%`,
+        'ajuste', Number(antes.n) || 0, Number(antes.n) || 0, Number(antes.n) || 0, nowIso(),
+      );
+      return r.changes;
+    });
+
+    const depois = estatisticas(supplierId);
+    audit(user.id, 'product.adjust', 'suppliers', supplierId, `${direcao} ${pct}% em ${alterados} item(ns)`);
+
+    const msg = `${alterados} produto(s) reajustado(s). Soma dos preços: ${fmtMoney(antes.soma)} → ${fmtMoney(depois.soma)}.`;
+    return redirect(`/produtos?fornecedor=${supplierId}&msg=${encodeURIComponent(msg)}`);
   });
 
   routeGet('/produtos/:id/editar', (ctx) => {

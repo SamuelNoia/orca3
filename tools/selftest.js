@@ -767,6 +767,70 @@ async function main() {
   ok('preco importado corretamente (2.135,00)', prodsModelo.text.includes('2.135,00'), '');
   ok('estoque nao foi confundido com preco', !prodsModelo.text.includes('R$ 10,00'), '');
 
+  section('Ajuste de precos em massa no catalogo');
+  const dbA = new DatabaseSync(DB_PATH, { readOnly: true });
+  const antesA = dbA.prepare(
+    'SELECT COUNT(*) AS n FROM products WHERE supplier_id = ? AND active = 1 AND unit_price > 0',
+  ).get(idAlfa);
+  const amostra = dbA.prepare(
+    'SELECT id, unit_price FROM products WHERE supplier_id = ? AND active = 1 AND unit_price > 0 LIMIT 1',
+  ).get(idAlfa);
+  dbA.close();
+  ok('fornecedor tem produtos para ajustar', antesA.n > 0, `n=${antesA.n}`);
+
+  const telaAjuste = await http.get(`/produtos/reajustar?fornecedor=${idAlfa}`);
+  ok('tela de ajuste abre', telaAjuste.status === 200 && telaAjuste.text.includes('Ajustar preços do catálogo'));
+  ok('tela mostra a situacao atual', telaAjuste.text.includes('Situação atual'));
+  ok('botao Ajustar precos existe no catalogo',
+    (await http.get('/produtos')).text.includes('/produtos/reajustar')
+    || (await http.get('/produtos')).text.includes('Ajustar preços'));
+
+  const semFornecedor = await http.get('/produtos/reajustar');
+  ok('sem fornecedor pede para selecionar', semFornecedor.text.includes('Selecione um fornecedor'));
+
+  const aplicarAumento = await http.post('/produtos/reajustar', {
+    _csrf: tokenOf(telaAjuste.text),
+    supplier_id: String(idAlfa),
+    direction: 'aumento',
+    pct: '10',
+  });
+  ok('aumento de 10% aplicado', aplicarAumento.status === 303, `status=${aplicarAumento.status}`);
+
+  const dbA2 = new DatabaseSync(DB_PATH, { readOnly: true });
+  const depoisA = dbA2.prepare('SELECT unit_price FROM products WHERE id = ?').get(amostra.id);
+  const lote = dbA2.prepare('SELECT filename FROM import_batches WHERE supplier_id = ? ORDER BY id DESC LIMIT 1').get(idAlfa);
+  dbA2.close();
+
+  const esperadoA = Math.round(amostra.unit_price * 1.1 * 100) / 100;
+  ok('preco multiplicado por 1,1',
+    Math.abs(depoisA.unit_price - esperadoA) < 0.011,
+    `${amostra.unit_price} -> ${depoisA.unit_price} (esperado ${esperadoA})`);
+  ok('ajuste registrado no historico do fornecedor', String(lote.filename).includes('10%'), lote.filename);
+
+  const telaDesconto = await http.get(`/produtos/reajustar?fornecedor=${idAlfa}`);
+  const aplicarDesconto = await http.post('/produtos/reajustar', {
+    _csrf: tokenOf(telaDesconto.text),
+    supplier_id: String(idAlfa),
+    direction: 'desconto',
+    pct: '5',
+  });
+  ok('desconto de 5% aplicado', aplicarDesconto.status === 303);
+
+  const dbA3 = new DatabaseSync(DB_PATH, { readOnly: true });
+  const depoisB = dbA3.prepare('SELECT unit_price FROM products WHERE id = ?').get(amostra.id);
+  dbA3.close();
+  const esperadoB = Math.round(depoisA.unit_price * 0.95 * 100) / 100;
+  ok('desconto reduz o preco', Math.abs(depoisB.unit_price - esperadoB) < 0.011, `${depoisA.unit_price} -> ${depoisB.unit_price}`);
+
+  const invalido = await http.post('/produtos/reajustar', {
+    _csrf: tokenOf(telaDesconto.text),
+    supplier_id: String(idAlfa),
+    direction: 'desconto',
+    pct: '100',
+  });
+  ok('desconto de 100% e recusado',
+    String(invalido.location || '').includes('err='), String(invalido.location));
+
   section('Estrutura das paginas');
   const paginas = [
     '/', '/clientes', '/clientes/novo', '/fornecedores', '/fornecedores/novo',
