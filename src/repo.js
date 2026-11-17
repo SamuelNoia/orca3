@@ -119,7 +119,9 @@ export function listProjects() {
   return all(
     `SELECT pr.*, c.name AS client_name,
             (SELECT COUNT(*) FROM quotes q WHERE q.project_id = pr.id) AS quotes_count,
-            (SELECT COALESCE(SUM(q.total_cache), 0) FROM quotes q WHERE q.project_id = pr.id) AS total
+            (SELECT COALESCE(SUM(q.total_cache), 0) FROM quotes q WHERE q.project_id = pr.id) AS total,
+            (SELECT q.total_cache FROM quotes q WHERE q.id = pr.winner_quote_id) AS winner_total,
+            (SELECT q.title FROM quotes q WHERE q.id = pr.winner_quote_id) AS winner_title
        FROM projects pr JOIN clients c ON c.id = pr.client_id
       ORDER BY pr.id DESC`,
   );

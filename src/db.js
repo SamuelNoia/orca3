@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS projects (
   name       TEXT NOT NULL,
   code       TEXT,
   notes      TEXT,
+  winner_quote_id INTEGER,
   created_at TEXT NOT NULL
 );
 
@@ -138,6 +139,7 @@ CREATE TABLE IF NOT EXISTS quotes (
   valid_days          INTEGER NOT NULL DEFAULT 15,
   observations        TEXT,
   total_cache         REAL NOT NULL DEFAULT 0,
+  adjust_pct          REAL NOT NULL DEFAULT 0,   -- aumento sobre o vencedor (perdedores)
   created_by          INTEGER,
   created_at          TEXT NOT NULL,
   updated_at          TEXT
@@ -233,6 +235,12 @@ function migrate() {
   }
   if (!colunas('suppliers').includes('layout')) {
     try { exec("ALTER TABLE suppliers ADD COLUMN layout TEXT NOT NULL DEFAULT 'classico'"); } catch { /* ja existe */ }
+  }
+  if (!colunas('projects').includes('winner_quote_id')) {
+    try { exec('ALTER TABLE projects ADD COLUMN winner_quote_id INTEGER'); } catch { /* ja existe */ }
+  }
+  if (!colunas('quotes').includes('adjust_pct')) {
+    try { exec('ALTER TABLE quotes ADD COLUMN adjust_pct REAL NOT NULL DEFAULT 0'); } catch { /* ja existe */ }
   }
 }
 

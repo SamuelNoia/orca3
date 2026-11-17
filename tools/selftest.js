@@ -593,6 +593,57 @@ async function main() {
   ok('PDF/impressao tambem segue o layout do fornecedor',
     printLayout.text.includes('Verdana'), 'fonte aplicada no CSS de impressao');
 
+  section('Projeto v2: vencedor e perdedores');
+  const hub = await http.get(`/projetos/${projId}`);
+  ok('pagina do projeto abre', hub.status === 200);
+  ok('mostra o orcamento vencedor', hub.text.includes('Orçamento vencedor'));
+  ok('tem formulario de perdedor', hub.text.includes('Adicionar perdedor'));
+  ok('oferece PDF de todos', hub.text.includes(`/projetos/${projId}/imprimir`));
+  ok('oferece pacote de planilhas', hub.text.includes(`/projetos/${projId}/planilhas.zip`));
+
+  let dbV = new DatabaseSync(DB_PATH, { readOnly: true });
+  const projRow = dbV.prepare('SELECT winner_quote_id FROM projects WHERE id = ?').get(projId);
+  ok('primeiro orcamento virou vencedor automaticamente',
+    projRow.winner_quote_id === orcId, `winner=${projRow.winner_quote_id} esperado=${orcId}`);
+
+  const criarPerdedor = await http.post(`/projetos/${projId}/perdedor`, {
+    _csrf: tokenOf(hub.text),
+    title: 'Proposta Fornecedor B',
+    supplier_id: String(betaId),
+    adjust_pct: '25',
+  });
+  ok('perdedor criado', criarPerdedor.status === 303, `status=${criarPerdedor.status}`);
+
+  const winRow = dbV.prepare('SELECT total_cache FROM quotes WHERE id = ?').get(projRow.winner_quote_id);
+  const perdedores = dbV.prepare('SELECT id, total_cache, adjust_pct FROM quotes WHERE project_id = ? AND id <> ?')
+    .all(projId, projRow.winner_quote_id);
+  const novoPerdedor = perdedores.find((p) => Math.abs((p.adjust_pct || 0) - 25) < 0.001);
+  dbV.close();
+
+  ok('aumento de 25% registrado no perdedor', !!novoPerdedor);
+  if (novoPerdedor) {
+    const esperado = Math.round(winRow.total_cache * 1.25 * 100) / 100;
+    ok('total do perdedor = vencedor + 25%',
+      Math.abs(novoPerdedor.total_cache - esperado) < 0.05,
+      `vencedor=${winRow.total_cache} perdedor=${novoPerdedor.total_cache} esperado=${esperado}`);
+  }
+
+  const zip = await http.get(`/projetos/${projId}/planilhas.zip`);
+  ok('pacote de planilhas gerado', zip.status === 200 && zip.buffer[0] === 0x50 && zip.buffer[1] === 0x4b, `status=${zip.status}`);
+  if (zip.status === 200) {
+    const dentro = zipRead(zip.buffer);
+    const nomes = [...dentro.keys()];
+    ok('pacote contem um xlsx por orcamento', nomes.filter((n) => n.endsWith('.xlsx')).length === perdedores.length + 1, nomes.join(', '));
+    ok('pacote tem arquivo de leia-me', nomes.some((n) => n.startsWith('LEIA-ME')));
+    ok('pacote marca o vencedor no nome', nomes.some((n) => n.includes('vencedor')));
+  }
+
+  const printAll = await http.get(`/projetos/${projId}/imprimir`);
+  ok('PDF de todas as propostas abre', printAll.status === 200);
+  const blocos = (printAll.text.match(/class="print-sheet"/g) || []).length;
+  ok('traz todas as propostas na mesma pagina', blocos === perdedores.length + 1, `blocos=${blocos}`);
+  ok('quebra pagina entre propostas', printAll.text.includes('page-break-after:always'));
+
   section('Planilha modelo');
   const modelo = await http.get('/modelo-importacao.xlsx');
   ok('modelo .xlsx disponivel', modelo.status === 200 && modelo.buffer[0] === 0x50, `status=${modelo.status}`);

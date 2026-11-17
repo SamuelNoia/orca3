@@ -15,6 +15,11 @@ entregar uma proposta bonita ao cliente. Você joga as planilhas de cada fornece
 para dentro, o sistema organiza o catálogo, compara preços, aplica margem, e devolve
 **planilha Excel e PDF prontos**, no layout da sua empresa.
 
+> **Versão 2** — o trabalho agora nasce no **projeto**: uma proposta **vencedora** e
+> os **concorrentes** derivados dela com aumento percentual. A plataforma entrega o
+> PDF de todas em sequência e o pacote de planilhas para enviar ao cliente.
+> A versão anterior está na tag [`v1.0`](../../releases/tag/v1.0).
+
 ---
 
 ## O problema que ele resolve
@@ -81,6 +86,20 @@ preço por item, a economia e o total de cada um.
 O painel calcula em tempo real: custo, produtos, serviços, despesas, total,
 **lucro bruto**, **margem efetiva** e **markup real**.
 
+### Projeto: vencedor e perdedores
+
+A tela do projeto é o centro do trabalho:
+
+- o **vencedor** aparece em destaque, com total e ações;
+- os **perdedores** ficam listados com o aumento aplicado a cada um;
+- **Adicionar perdedor** pede só título, fornecedor e o aumento em % — o resto é
+  herdado do vencedor;
+- o primeiro orçamento criado no projeto vira **vencedor automaticamente**;
+- **PDF de todas as propostas** gera um documento único, com quebra de página entre
+  elas;
+- **Baixar planilhas (.zip)** entrega um `.xlsx` por proposta, nomeados em ordem,
+  com o vencedor identificado.
+
 ### Documento do cliente
 
 **Planilha Excel** com fórmulas reais, editável, no layout da empresa:
@@ -123,16 +142,22 @@ Para comparar antes de escolher, cada layout tem um **exemplo para download** em
 
 ## Como funciona
 
+O **projeto** é o ponto de partida. Dentro dele ficam uma proposta **vencedora**
+(a mais barata, a que deve ganhar) e as **perdedoras**, geradas a partir dela com
+aumentos percentuais — como uma disputa real entre fornecedores.
+
 ```
-Fornecedores → enviar planilha → catálogo de produtos
-                                        ↓
-Clientes → Projeto → Orçamento → margem, despesas, serviço → XLSX + PDF
+Projeto ─► Orçamento vencedor
+              │
+              ├─ perdedor  +8%
+              ├─ perdedor +15%   ──►  PDF de todas + pacote de planilhas
+              └─ perdedor +22%
 ```
 
-**Cenário típico:** você recebe a planilha de três fornecedores, sobe as três.
-Monta o orçamento com o fornecedor A, clica em **Clonar**, escolhe o fornecedor B e
-aplica +7% sobre o preço final. Repete para o C. Compara os três no projeto e envia
-o melhor ao cliente — com a planilha e o PDF no layout da sua empresa.
+**Cenário típico:** você cria o projeto, monta o orçamento vencedor com o
+fornecedor mais barato, e gera os concorrentes informando o aumento de cada um.
+A plataforma devolve **um PDF com todas as propostas em sequência** e **um pacote
+com todas as planilhas** — prontos para enviar ao cliente.
 
 ---
 
@@ -188,10 +213,12 @@ com uma diferente. Troque em *Usuários → Administrador*.
 1. **Cadastre a empresa** em *Configurações* (razão social, CNPJ, endereço, banco e
    layout padrão).
 2. **Cadastre os fornecedores** e envie a planilha de cada um.
-3. **Cadastre o cliente** e crie um **projeto**.
-4. **Crie o orçamento**, adicione os produtos e ajuste margem, serviço e despesas.
-5. **Clone** para os outros fornecedores, se precisar comparar.
-6. **Gere a planilha** e o **PDF** e envie ao cliente.
+3. **Cadastre o cliente** e crie o **projeto**.
+4. **Crie o orçamento vencedor**: adicione os produtos e ajuste margem, serviço e
+   despesas. Ele já nasce marcado como vencedor.
+5. **Adicione os perdedores** informando o aumento de cada um (ex.: 8%, 15%, 22%).
+6. Em **Documentos para o cliente**, baixe o **PDF de todas as propostas** e o
+   **pacote de planilhas** (.zip). Envie ao cliente.
 
 ---
 
@@ -252,10 +279,12 @@ orca3/
 │   ├── modelo.js             planilha modelo para fornecedores
 │   ├── importer.js           detecção de colunas e importação
 │   ├── calc.js               motor de margem, despesas e serviço
+│   ├── clone.js              clonagem (base do perdedor)
+│   ├── print.js              folha A4 para PDF
 │   ├── exporter.js           planilha e comparativo
 │   ├── repo.js               consultas de dados
 │   ├── ui.js                 componentes de tela
-│   └── routes/               telas: auth, admin, catalog, quotes
+│   └── routes/               telas: auth, admin, catalog, project, quotes
 └── tools/
     ├── seed-inicial.js       base zerada + 1 produto de teste
     ├── seed-demo.js          carrega uma planilha consolidada
@@ -272,10 +301,11 @@ orca3/
 node tools/selftest.js
 ```
 
-**132 verificações** de ponta a ponta, num banco temporário isolado: login e
+**149 verificações** de ponta a ponta, num banco temporário isolado: login e
 permissões, CSRF, cadastros, importação de dois layouts de planilha diferentes,
 planilha modelo (ida e volta), preço de venda manual, orçamento sem serviço, os
-5 layouts, clonagem com ajuste, comparativo, exportação, consolidado e estrutura
+5 layouts, clonagem com ajuste, projeto com vencedor e perdedores, PDF de todas as
+propostas, pacote de planilhas, comparativo, exportação, consolidado e estrutura
 HTML das telas.
 
 ---

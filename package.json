@@ -1,7 +1,7 @@
 {
   "name": "central-orcamentos",
-  "version": "1.1.0",
-  "description": "Plataforma de orcamentos multi-fornecedor com SQLite e exportacao XLSX",
+  "version": "2.0.0",
+  "description": "Plataforma de propostas: orcamento vencedor, concorrentes e documentos para o cliente",
   "type": "module",
   "private": true,
   "engines": {

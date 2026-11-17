@@ -8,7 +8,8 @@ import {
 } from '../repo.js';
 import { buildQuoteWorkbook, buildComparisonWorkbook } from '../exporter.js';
 import { fmtMoney, fmtQty, fmtPct, unitPriceFor, round2, computeQuote } from '../calc.js';
-import { layoutInfo, printThemeCss, themeFor } from '../layouts.js';
+import { layoutInfo } from '../layouts.js';
+import { quoteSheetHtml } from '../print.js';
 import {
   layout, esc, field, select, textarea, card, pageHeader, button, csrfField,
   badge, emptyState, flash, statusBadge,
@@ -82,13 +83,15 @@ export function registerQuoteRoutes() {
     requireUser(ctx);
     const projects = listProjects();
     const rows = projects.map((p) => `<tr>
-      <td class="strong"><a href="/projetos/${p.id}">${esc(p.name)}</a></td>
+      <td class="strong"><a href="/projetos/${p.id}">${esc(p.name)}</a>
+        ${p.winner_title ? `<div class="small muted">vencedor: ${esc(p.winner_title)}</div>` : '<div class="small muted">sem vencedor definido</div>'}</td>
       <td class="small">${esc(p.client_name)}</td>
       <td class="center">${p.quotes_count}</td>
+      <td class="num">${p.winner_total != null ? fmtMoney(p.winner_total) : '—'}</td>
       <td class="num">${fmtMoney(p.total)}</td>
       <td class="right nowrap">
-        <a class="btn sm" href="/projetos/${p.id}/exportar.xlsx">Consolidado</a>
         <a class="btn sm" href="/projetos/${p.id}">Abrir</a>
+        <a class="btn sm" href="/projetos/${p.id}/planilhas.zip">Planilhas</a>
       </td>
     </tr>`).join('');
 
@@ -97,13 +100,13 @@ export function registerQuoteRoutes() {
     return render(ctx, 'Projetos', `
       ${pageHeader({
         title: 'Projetos',
-        subtitle: 'Agrupe orçamentos do mesmo cliente (ex.: escolas de um mesmo edital) para gerar a planilha consolidada.',
+        subtitle: 'Cada projeto reúne a proposta vencedora e os concorrentes, com os documentos prontos para o cliente.',
       })}
       ${flash(ctx)}
       <div class="grid-2">
         <div>${card(null, projects.length
           ? `<div class="table-wrap"><table>
-              <thead><tr><th>Projeto</th><th>Cliente</th><th class="center">Orçamentos</th><th class="num">Total</th><th></th></tr></thead>
+              <thead><tr><th>Projeto</th><th>Cliente</th><th class="center">Propostas</th><th class="num">Vencedor</th><th class="num">Soma</th><th></th></tr></thead>
               <tbody>${rows}</tbody></table></div>`
           : emptyState('Nenhum projeto criado.'), { flush: true })}</div>
         <div>${card('Novo projeto', `
@@ -131,44 +134,6 @@ export function registerQuoteRoutes() {
     );
     audit(user.id, 'project.create', 'projects', r.lastId, name);
     return redirect(`/projetos/${r.lastId}?msg=${encodeURIComponent('Projeto criado.')}`);
-  });
-
-  routeGet('/projetos/:id', (ctx) => {
-    requireUser(ctx);
-    const project = getProject(Number(ctx.params.id));
-    if (!project) throw new HttpError(404, 'Projeto não encontrado.');
-    const quotes = projectQuotes(project.id);
-    const total = quotes.reduce((s, q) => s + (q.total_cache || 0), 0);
-
-    const rows = quotes.map((q) => `<tr>
-      <td class="strong"><a href="/orcamentos/${q.id}">${esc(q.title)}</a></td>
-      <td class="small">${esc(q.emitter_name || '—')}</td>
-      <td>${statusBadge(q.status)}</td>
-      <td class="num">${fmtMoney(q.total_cache)}</td>
-      <td class="right nowrap">
-        <a class="btn sm" href="/orcamentos/${q.id}">Editar</a>
-        <a class="btn sm" href="/orcamentos/${q.id}/clonar">Clonar</a>
-        <a class="btn sm" href="/orcamentos/${q.id}/exportar.xlsx">XLSX</a>
-      </td>
-    </tr>`).join('');
-
-    return render(ctx, project.name, `
-      ${pageHeader({
-        title: project.name,
-        subtitle: `${esc(project.client_name)}${project.code ? ` · ${esc(project.code)}` : ''}`,
-        back: { href: '/projetos', label: 'Projetos' },
-        actions: `<a class="btn primary" href="/orcamentos/novo?project=${project.id}">Novo orçamento no projeto</a>
-                  <a class="btn" href="/projetos/${project.id}/exportar.xlsx">Planilha consolidada</a>`,
-      })}
-      ${flash(ctx)}
-      ${card(`${quotes.length} orçamento(s) · ${fmtMoney(total)}`, quotes.length
-        ? `<div class="table-wrap"><table>
-            <thead><tr><th>Unidade / Título</th><th>Fornecedor</th><th>Situação</th><th class="num">Total</th><th></th></tr></thead>
-            <tbody>${rows}</tbody>
-            <tfoot><tr class="total"><td colspan="3">Total do projeto</td><td class="num">${fmtMoney(total)}</td><td></td></tr></tfoot>
-          </table></div>`
-        : emptyState('Nenhum orçamento neste projeto ainda.'), { flush: true })}
-    `);
   });
 
   routeGet('/projetos/:id/exportar.xlsx', (ctx) => {
@@ -297,6 +262,13 @@ export function registerQuoteRoutes() {
       num(ctx.fields.service_pct, 0), null, num(ctx.fields.valid_days, 15), user.id, nowIso(),
     );
     run('UPDATE quotes SET code = ? WHERE id = ?', `ORC-${String(r.lastId).padStart(4, '0')}`, r.lastId);
+    // o primeiro orcamento do projeto vira o vencedor automaticamente
+    if (projectId) {
+      const projeto = get('SELECT winner_quote_id FROM projects WHERE id = ?', projectId);
+      if (projeto && !projeto.winner_quote_id) {
+        run('UPDATE projects SET winner_quote_id = ? WHERE id = ?', r.lastId, projectId);
+      }
+    }
     audit(user.id, 'quote.create', 'quotes', r.lastId, title);
     return redirect(`/orcamentos/${r.lastId}?msg=${encodeURIComponent('Orçamento criado. Adicione os produtos.')}`);
   });
@@ -881,6 +853,7 @@ export function registerQuoteRoutes() {
   post('/orcamentos/:id/excluir', (ctx) => {
     requireUser(ctx);
     const id = Number(ctx.params.id);
+    run('UPDATE projects SET winner_quote_id = NULL WHERE winner_quote_id = ?', id);
     run('DELETE FROM quotes WHERE id = ?', id);
     audit(ctx.user.id, 'quote.delete', 'quotes', id, null);
     return redirect(`/orcamentos?msg=${encodeURIComponent('Orçamento excluído.')}`);
@@ -972,55 +945,16 @@ export function registerQuoteRoutes() {
     requireUser(ctx);
     const full = loadQuote(Number(ctx.params.id));
     if (!full) throw new HttpError(404, 'Orçamento não encontrado.');
-    const { quote, items, calc, client, emitter } = full;
-    const tema = themeFor(emitter?.layout);
 
-    const rows = items.map((it, i) => `<tr>
-      <td class="center">${esc(it.internal_code || '')}</td>
-      <td>${esc(it.description)}</td>
-      <td class="center">${brQty(it.qty)}</td>
-      <td class="num">${brNum(calc.lines[i].unit_price)}</td>
-      <td class="num">${brNum(calc.lines[i].line_total)}</td>
-    </tr>`).join('');
-
-    const obs = String(quote.observations || '').trim()
-      ? quote.observations.split(/\r?\n/).filter(Boolean).map((l) => `<p class="small" style="margin:2px 0">${esc(l)}</p>`).join('')
-      : `<p class="small" style="margin:2px 0">1. Validade desta proposta: ${quote.valid_days} dias a contar da data de emissão.</p>
-         <p class="small" style="margin:2px 0">2. Fornecimento dos materiais e execução dos serviços de instalação técnica realizados pela ${esc(emitter?.legal_name || emitter?.name || '')}.</p>
-         <p class="small" style="margin:2px 0">3. Valores unitários sujeitos a reajuste conforme variação de mercado.</p>
-         <p class="small" style="margin:2px 0">4. Garantia dos materiais conforme fabricantes e 12 meses para os serviços.</p>`;
-
-    return render(ctx, `Imprimir ${quote.title}`, `
-      ${printThemeCss(tema)}
+    return render(ctx, `Imprimir ${full.quote.title}`, `
       ${pageHeader({
         title: 'Pré-visualização da impressão',
-        subtitle: 'No diálogo de impressão, escolha <strong>Salvar como PDF</strong> para gerar o arquivo. Para a planilha editável, use "Baixar XLSX".',
-        back: { href: `/orcamentos/${quote.id}`, label: quote.title },
+        subtitle: 'No diálogo de impressão, escolha <strong>Salvar como PDF</strong>. Para a planilha editável, use "Baixar XLSX".',
+        back: { href: `/orcamentos/${full.quote.id}`, label: full.quote.title },
         actions: `<button class="btn primary" onclick="window.print()">Salvar como PDF</button>
-                  <a class="btn" href="/orcamentos/${quote.id}/exportar.xlsx">Baixar XLSX</a>`,
+                  <a class="btn" href="/orcamentos/${full.quote.id}/exportar.xlsx">Baixar XLSX</a>`,
       })}
-      <div class="print-sheet">
-        <h1>${esc((emitter?.legal_name || emitter?.name || '').toUpperCase())} — ORÇAMENTO DE MATERIAIS E SERVIÇOS</h1>
-        <div class="print-meta">
-          <div><strong>Fornecedor</strong>${esc(emitter?.legal_name || '')}<br>${esc(emitter?.cnpj || '')}</div>
-          <div><strong>Cliente</strong>${esc(client?.name || '')}<br>${esc(client?.cnpj || '')}</div>
-        </div>
-        <p class="small"><strong>Projeto / Local:</strong> ${esc(quote.location || quote.title)}</p>
-        <table>
-          <thead><tr><th>Código</th><th>Descrição</th><th class="center">Qtd</th><th class="num">V. Unit.</th><th class="num">Total</th></tr></thead>
-          <tbody>${rows}</tbody>
-          <tfoot>
-            <tr class="total"><td colspan="4">Produtos — ${esc(quote.title)}</td><td class="num">${brNum(calc.productsTotal)}</td></tr>
-            ${calc.servicePct > 0 ? `<tr><td colspan="4">Serviço de instalação</td><td class="num">${brNum(calc.serviceValue)}</td></tr>` : ''}
-            ${calc.expenseLines.map((e) => `<tr><td colspan="4">${esc(e.description)}</td><td class="num">${brNum(e.amount)}</td></tr>`).join('')}
-            <tr class="total"><td colspan="4">VALOR TOTAL</td><td class="num">${brNum(calc.total)}</td></tr>
-          </tfoot>
-        </table>
-        <h3 style="font-size:12px;color:var(--navy);margin:18px 0 6px">OBSERVAÇÕES E CONDIÇÕES COMERCIAIS</h3>
-        ${obs}
-        <h3 style="font-size:12px;color:var(--navy);margin:14px 0 6px">DADOS BANCÁRIOS</h3>
-        <p class="small" style="white-space:pre-line;margin:0">${esc(emitter?.bank_info || '')}</p>
-      </div>
+      ${quoteSheetHtml({ quote: full.quote, items: full.items, calc: full.calc, client: full.client, emitter: full.emitter })}
     `);
   });
 }
