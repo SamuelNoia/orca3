@@ -47,17 +47,18 @@ export function saveSupplier(id, data) {
   if (id) {
     run(
       `UPDATE suppliers SET name=?, legal_name=?, cnpj=?, ie=?, address=?, contact=?, email=?,
-        phone=?, bank_info=?, active=?, updated_at=? WHERE id=?`,
+        phone=?, bank_info=?, layout=?, active=?, updated_at=? WHERE id=?`,
       data.name, data.legal_name, data.cnpj, data.ie, data.address, data.contact, data.email,
-      data.phone, data.bank_info, data.active, nowIso(), id,
+      data.phone, data.bank_info, data.layout || 'classico', data.active, nowIso(), id,
     );
     return id;
   }
   const r = run(
-    `INSERT INTO suppliers (name, legal_name, cnpj, ie, address, contact, email, phone, bank_info, is_own, active, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO suppliers (name, legal_name, cnpj, ie, address, contact, email, phone, bank_info,
+       layout, is_own, active, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     data.name, data.legal_name, data.cnpj, data.ie, data.address, data.contact, data.email,
-    data.phone, data.bank_info, data.is_own ? 1 : 0, data.active ?? 1, nowIso(),
+    data.phone, data.bank_info, data.layout || 'classico', data.is_own ? 1 : 0, data.active ?? 1, nowIso(),
   );
   return r.lastId;
 }

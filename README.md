@@ -1,431 +1,269 @@
 # Central de Orçamentos
 
-Plataforma para montar orçamentos a partir das planilhas de vários fornecedores e
-gerar a planilha editável no layout da sua empresa, pronta para impressão.
+![Fluxo: planilhas dos fornecedores, catálogo, orçamento e documento final](docs/fluxo.svg)
 
-Roda **no seu computador ou em um servidor**, com **SQLite** (um único arquivo de
-banco) e **zero dependências externas** — não há `npm install`.
+![Node](https://img.shields.io/badge/Node.js-24-339933?logo=node.js&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-arquivo%20único-003B57?logo=sqlite&logoColor=white)
+![Docker](https://img.shields.io/badge/ghcr.io-samuelnoia%2Forca3-2496ED?logo=docker&logoColor=white)
+![Dependências](https://img.shields.io/badge/dependências-nenhuma-success)
+
+**Gere orçamentos profissionais a partir das planilhas dos seus fornecedores — em
+minutos, não em horas.**
+
+Sistema web de uso próprio para empresas que cotam com vários fornecedores e precisam
+entregar uma proposta bonita ao cliente. Você joga as planilhas de cada fornecedor
+para dentro, o sistema organiza o catálogo, compara preços, aplica margem, e devolve
+**planilha Excel e PDF prontos**, no layout da sua empresa.
 
 ---
 
-## Início rápido
+## O problema que ele resolve
 
-### Com Docker (recomendado para servidor)
+Quem monta orçamento com mais de um fornecedor conhece o roteiro:
 
-```bash
-docker compose up -d --build
+- cada fornecedor manda uma planilha com colunas diferentes;
+- os preços mudam toda semana e ficam espalhados em arquivos;
+- montar a proposta do cliente é copiar e colar no Excel, linha por linha;
+- aumentar a margem significa refazer conta em cada célula;
+- fazer a mesma proposta por três fornecedores diferentes, então, é o dia inteiro;
+- e ainda tem o risco de mandar para o cliente uma planilha com o **custo** à mostra.
+
+## A solução
+
+Um sistema que faz esse caminho sozinho:
+
+1. **Importa** a planilha de cada fornecedor, mesmo com layout diferente do outro;
+2. **Organiza** um catálogo por fornecedor, com descrição, marca, estoque, EAN,
+   código do fabricante, referência e NCM;
+3. **Compara** o mesmo item entre fornecedores e mostra o mais barato;
+4. **Monta** o orçamento com margem, serviço e outras despesas;
+5. **Gera** a planilha Excel e o PDF — sem custo nem margem aparentes para o cliente.
+
+---
+
+## Principais recursos
+
+### Catálogo por fornecedor
+
+Cada fornecedor tem o **seu próprio catálogo**, alimentado pela planilha que ele envia.
+
+- lê `.xlsx` e `.csv`;
+- **descobre sozinho** a linha de cabeçalho e qual coluna é qual;
+- mostra uma tela de conferência com amostra dos dados antes de importar;
+- você pode corrigir o mapeamento e ele fica salvo para a próxima vez;
+- modo **atualizar** (mantém e atualiza preços) ou **substituir** o catálogo inteiro.
+
+Campos reconhecidos: descrição, valor unitário, marca, estoque, código do fabricante,
+código de barras (EAN), referência e NCM. Também dá para **criar e editar produto**
+manualmente, sem planilha.
+
+### Comparação de preços
+
+Ao incluir um item, o sistema procura o **mesmo produto nos outros fornecedores**
+(por EAN, código do fabricante ou referência), marca o mais barato e mostra a
+diferença em reais. Trocar o fornecedor da linha troca o custo automaticamente.
+
+O **Comparativo** gera uma planilha com todos os fornecedores lado a lado, o menor
+preço por item, a economia e o total de cada um.
+
+### Orçamento
+
+| Recurso | O que faz |
+|---|---|
+| **Margem** | markup sobre o custo ou margem sobre o preço de venda |
+| **Preço de venda editável** | digite o preço final de um item, ignorando a margem naquela linha |
+| **Serviço de instalação** | percentual sobre os produtos; **0 = orçamento sem serviço** |
+| **Outras despesas** | percentual ou valor fixo sobre produtos, serviços ou total |
+| **Arredondamento** | sobe o preço para o próximo múltiplo (ex.: R$ 0,10) |
+| **Fornecedores misturados** | cada linha pode vir de um fornecedor diferente |
+| **Clonar** | cria o mesmo orçamento para outro fornecedor com ajuste % sobre o preço final |
+
+O painel calcula em tempo real: custo, produtos, serviços, despesas, total,
+**lucro bruto**, **margem efetiva** e **markup real**.
+
+### Documento do cliente
+
+**Planilha Excel** com fórmulas reais, editável, no layout da empresa:
+
+- uma aba por orçamento, com cabeçalho do fornecedor e do cliente;
+- aba de custos **oculta** — a memória de cálculo fica fora do alcance do cliente;
+- aba **RESUMO CONSOLIDADO** quando o projeto tem várias unidades;
+- margem e percentual de serviço **não aparecem** no documento.
+
+**PDF** em A4, pronto para enviar: cabeçalho, itens, totais, observações e dados
+bancários.
+
+### 5 layouts
+
+![Cinco layouts de orçamento](docs/layouts.svg)
+
+O layout é escolhido **no cadastro do fornecedor** e aplicado automaticamente quando
+ele assina a proposta. Cada um muda fonte, tamanho, cores, bordas e espaçamento:
+
+| Layout | Fonte | Perfil |
+|---|---|---|
+| **Clássico** | Segoe UI 9 | azul institucional, cabeçalho preenchido |
+| **Moderno** | Calibri 11 | título grande, linhas só na base, visual limpo |
+| **Compacto** | Arial Narrow 8 | sem preenchimento, cabe mais item por página |
+| **Formal** | Times New Roman 10 | caixa cinza escuro, aparência de documento |
+| **Executivo** | Verdana 9 | verde-petróleo, espaçado, proposta premium |
+
+Para comparar antes de escolher, cada layout tem um **exemplo para download** em
+*Fornecedores → Layout do orçamento*.
+
+### Administração
+
+- usuários com perfil **administrador** e **usuário**;
+- clientes, fornecedores, produtos e projetos;
+- projetos agrupam vários orçamentos (ex.: as escolas de um mesmo edital);
+- configuração da empresa emitente, dados bancários, layouts e padrões de cálculo.
+
+---
+
+## Como funciona
+
+```
+Fornecedores → enviar planilha → catálogo de produtos
+                                        ↓
+Clientes → Projeto → Orçamento → margem, despesas, serviço → XLSX + PDF
 ```
 
-Abre em `http://localhost:3088`. Os dados ficam em `./data` no computador que roda
-o container.
+**Cenário típico:** você recebe a planilha de três fornecedores, sobe as três.
+Monta o orçamento com o fornecedor A, clica em **Clonar**, escolhe o fornecedor B e
+aplica +7% sobre o preço final. Repete para o C. Compara os três no projeto e envia
+o melhor ao cliente — com a planilha e o PDF no layout da sua empresa.
 
-> A porta publicada é a **3088**; dentro do container a aplicação continua na 3000.
-> Para trocar a porta externa, altere apenas o lado esquerdo em `ports`
-> (`"3088:3000"`).
+---
 
-```bash
-docker compose logs -f      # acompanhar
-docker compose down         # parar
-docker compose up -d        # subir de novo
-```
+## Instalação
 
-### GitHub + instalação em 1 comando (recomendado)
+A imagem é publicada automaticamente no GitHub Container Registry.
 
-A imagem é construída pelo **GitHub Actions** — você **não precisa de Docker na sua
-máquina**. É o caminho mais limpo para CasaOS/ZimaOS.
-
-**1. Envie o projeto para um repositório**
-
-Repositório deste projeto: <https://github.com/SamuelNoia/orca3>
-
-Pela interface web (sem instalar nada): **Add file → Upload files**, arraste o
-**conteúdo** da pasta `orca3-para-github` (não a pasta em si) e confirme.
-
-Ou por linha de comando:
-
-```bash
-git init
-git add .
-git commit -m "Central de Orcamentos"
-git branch -M main
-git remote add origin https://github.com/SamuelNoia/orca3.git
-git push -u origin main
-```
-
-**2. Espere o build**
-
-O workflow `.github/workflows/publish.yml` roda sozinho e publica a imagem em
-`ghcr.io/samuelnoia/orca3:latest`, para **amd64 e arm64**. Acompanhe em
-*Actions* no repositório (leva ~2 minutos).
-
-**3. Torne o pacote público**
-
-O GitHub cria o pacote como **privado**. O CasaOS não consegue baixar pacote
-privado sem login, então:
-
-> GitHub → seu perfil → **Packages** → `orca3` → **Package settings** →
-> **Change visibility** → **Public**
-
-**4. No servidor, um comando**
+### Um comando (Linux / CasaOS / ZimaOS)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SamuelNoia/orca3/main/instalar.sh | sh
 ```
 
-Isso baixa a imagem, cria a pasta de dados, sobe o container na porta **3088** e
-mostra as credenciais. Rodar de novo **atualiza** a imagem mantendo os dados.
+O script baixa a imagem, cria a pasta de dados, sobe o container na porta **3088** e
+exibe a senha de acesso gerada. Rodar de novo atualiza a imagem **mantendo os dados**.
 
-Sem `curl`: copie o `instalar.sh` para o servidor e rode `sh instalar.sh`.
-
-Personalizando:
+### Docker Compose
 
 ```bash
-PORT=4000 ADMIN_PASSWORD=MinhaSenha123 sh instalar.sh
+docker compose -f docker-compose.ghcr.yml up -d
 ```
 
-Ou, no CasaOS: importe o `docker-compose.ghcr.yml`, que já aponta para
-`ghcr.io/samuelnoia/orca3:latest`.
+### Sem Docker (Windows)
 
-> **Pacote privado?** Faça login antes de subir:
-> `echo TOKEN | docker login ghcr.io -u samuelnoia --password-stdin`
-
-### CasaOS / ZimaOS sem GitHub (alternativa)
-
-Use esta opção apenas se **não** quiser publicar a imagem no GitHub.
-
-**Use o arquivo `docker-compose.casaos.yml`, não o `docker-compose.yml`.**
-
-O motivo: o CasaOS **não executa `build:`** — ele só baixa imagens prontas de um
-registry. O `docker-compose.yml` tem `image: central-orcamentos:local` + `build:`,
-que funciona com `docker compose up --build` numa máquina com Docker, mas essa
-imagem nunca foi publicada. Ao importar no CasaOS aparece:
-
-> *Falha ao baixar a imagem: repositório não existe*
-
-A variante `docker-compose.casaos.yml` resolve isso usando a imagem oficial
-**`node:24-alpine`** (que existe no Docker Hub) e montando o código do projeto como
-volume — sem construir imagem e sem publicar em registry.
-
-**Passo a passo**
-
-1. Copie `pacote-casaos.zip` para o servidor e descompacte em:
-
-   ```
-   /DATA/AppData/orcamentos/app
-   ```
-
-   Deve ficar assim: `/DATA/AppData/orcamentos/app/server.js`, `app/src/`,
-   `app/public/`, `app/tools/`.
-
-   Formas de copiar: app **Arquivos** do CasaOS (upload do .zip e extrair),
-   compartilhamento SMB, ou `scp pacote-casaos.zip usuario@zima.local:/tmp/`.
-
-2. No CasaOS: **Apps → + → Importar / Colar YAML** e cole o conteúdo de
-   `docker-compose.casaos.yml`.
-
-3. Acesse `http://zima.local:3088` (ou `http://IP-do-servidor:3088`).
-
-Na primeira execução o container cria `/DATA/AppData/orcamentos/data/orcamentos.db`
-com a base zerada e o produto de teste. Se a pasta `app` estiver vazia, o container
-**não entra em loop de erro**: ele fica parado e escreve no log as instruções.
-
-Para regerar o pacote depois de qualquer alteração:
-
-```bash
-node tools/gerar-pacote.js
-```
-
-> **Alternativa:** se preferir uma imagem própria, construa no servidor via SSH
-> (`docker build -t central-orcamentos:local .`) ou publique no Docker Hub/GHCR e
-> aí sim use o `docker-compose.yml` original.
-
-### No Windows, sem Docker
-
-Dê duplo clique em **`iniciar.cmd`**. O navegador abre em `http://127.0.0.1:3000`.
-
-> **Requisito:** Node.js 22.5 ou superior. O `iniciar.cmd` procura o Node instalado,
-> um `runtime\node.exe` na pasta do projeto, ou o runtime já presente na máquina.
-> Se não achar, instale a versão LTS em <https://nodejs.org>.
-
-Manualmente:
-
-```bat
-node server.js
-set PORT=3001 && node server.js     :: outra porta
-```
+Baixe o projeto e dê duplo clique em **`iniciar.cmd`** (requer Node.js 22.5+).
 
 ### Primeiro acesso
 
 | Campo | Valor |
 |---|---|
-| E-mail | `admin@empresa.local` (definido em `ADMIN_EMAIL`) |
-| Senha  | **gerada automaticamente** na primeira execução |
+| E-mail | `admin@empresa.local` |
+| Senha | **gerada automaticamente** na primeira execução |
 
-Não existe senha fixa. Na primeira subida o sistema cria o administrador com uma
-senha aleatória de 16 caracteres e a grava em:
+A senha aparece no log (`docker logs orcamentos`) e em
+`data/PRIMEIRO_ACESSO.txt`. Não existe senha fixa no código — cada instalação nasce
+com uma diferente. Troque em *Usuários → Administrador*.
 
-- `data/PRIMEIRO_ACESSO.txt` (no volume de dados)
-- no log do container: `docker logs orcamentos`
+### Variáveis de ambiente
 
-Para usar uma senha sua, defina `ADMIN_PASSWORD` antes de subir (descomente no
-`docker-compose.yml` ou use `ADMIN_PASSWORD=... sh instalar.sh`).
-
-**Troque a senha** em *Usuários → Administrador* e depois apague o
-`PRIMEIRO_ACESSO.txt`.
-
----
-
-## A base começa zerada
-
-Por padrão a instalação nova vem **limpa**, só com:
-
-- fornecedor **Fornecedor Exemplo** (marcado como emitente);
-- **1 produto de teste** — `PRODUTO TESTE - CABO FLEXÍVEL 2,5 MM`.
-
-Nenhum cliente, projeto ou orçamento. A ideia é você validar o fluxo com esse
-produto e depois cadastrar os seus dados reais.
-
-Para recarregar esse estado:
-
-```bash
-npm run seed:reset          # ou: node tools/seed-inicial.js --force
-```
-
-Para carregar uma base de demonstração a partir de uma planilha de orçamento
-consolidado (aba `CUSTOS`):
-
-```bash
-node tools/seed-demo.js "C:\caminho\planilha.xlsx"
-```
-
-O script cria a empresa emitente e o cliente com dados genéricos (`EMPRESA
-EXEMPLO` / `CLIENTE EXEMPLO`) e um orçamento por escola encontrada na planilha.
-
-No Docker, defina `SEED` no `docker-compose.yml`:
-
-| `SEED` | Resultado |
-|---|---|
-| `inicial` (padrão) | base zerada + 1 produto de teste |
-| `none` | base totalmente vazia |
-| `demo` | carrega de `/app/data/demo.xlsx` (precisa do arquivo no volume) |
-
-O `SEED` só age **quando o banco ainda não existe**. Depois disso, os dados são
-sempre preservados.
+| Variável | Padrão | Para que serve |
+|---|---|---|
+| `PORT` | `3000` | porta interna do container |
+| `DATA_DIR` | `/app/data` | pasta do banco e arquivos |
+| `ADMIN_EMAIL` | `admin@empresa.local` | login do administrador |
+| `ADMIN_PASSWORD` | *(aleatória)* | senha inicial, se quiser definir |
+| `SEED` | `inicial` | `inicial` (base com 1 produto de teste), `none` ou `demo` |
+| `TZ` | `America/Sao_Paulo` | fuso horário |
 
 ---
 
-## Planilha modelo para os fornecedores
+## Uso no dia a dia
 
-Para não explicar o formato a cada fornecedor, entregue o modelo pronto.
-
-**Pelo sistema:** em *Fornecedores → Enviar planilha*, botão **“Baixar planilha
-modelo”** — ou direto em `/modelo-importacao.xlsx`.
-
-**Como arquivo:** `modelo_importacao_produtos.xlsx` (e `.csv`) já estão prontos na
-raiz do projeto. Para regerar:
-
-```bash
-npm run modelo              # node tools/gerar-modelo.js
-```
-
-O modelo tem duas abas:
-
-- **PRODUTOS** — cabeçalho com as 10 colunas e 6 linhas de exemplo;
-- **INSTRUCOES** — explica campo por campo o que preencher e as regras.
-
-Colunas: `Código`, `Descrição`, `Valor Unitário`, `Marca`, `Estoque`,
-`Código Fabricante`, `Código de Barras (EAN)`, `Referência`, `NCM`, `Unidade`.
-
-A ordem das colunas não importa — o sistema procura pelo nome do cabeçalho.
-
----
-
-## O fluxo de trabalho
-
-```
-Fornecedores → enviar planilha → catálogo de produtos
-                                        ↓
-Clientes → Projeto → Orçamento → itens + margem + despesas → planilha XLSX
-```
-
-### 1. Fornecedores e catálogo
-
-Em **Fornecedores → Novo fornecedor** cadastre cada empresa que manda preço.
-Marque como **“empresa emitente”** aquela que assina a proposta (a sua empresa).
-
-Em **Enviar planilha** você anexa o arquivo do fornecedor. O sistema:
-
-- lê `.xlsx` e `.csv`;
-- **descobre sozinho a linha de cabeçalho** e qual coluna é qual;
-- mostra uma tela de conferência com o mapeamento e uma amostra dos dados;
-- deixa você corrigir o mapeamento se o layout for diferente;
-- grava o mapeamento para reaproveitar no próximo envio.
-
-Cada fornecedor tem o **seu próprio catálogo** — sistemas e layouts diferentes não
-são problema.
-
-Dois modos: **atualizar** (mantém o que existe e atualiza preços) ou
-**substituir** todo o catálogo.
-
-Além da planilha, o catálogo aceita manutenção manual:
-
-- **Novo produto** — cadastra um item sem planilha, escolhendo o fornecedor;
-- **Editar** — corrige descrição, preço, marca, estoque, EAN, NCM e os demais campos;
-- **Excluir** — desativa o item sem apagar o histórico de orçamentos.
-
-### 2. Comparação entre fornecedores
-
-Ao adicionar um produto ao orçamento, o sistema procura o **mesmo item nos outros
-fornecedores** (por EAN, código do fabricante ou referência) e monta as ofertas.
-
-- Na coluna **Fornecedor** aparece um seletor com o preço de cada um;
-- o mais barato é marcado como **“melhor”** e a diferença aparece em reais;
-- trocar o fornecedor **troca o custo do item** automaticamente;
-- o botão **Comparativo** gera uma planilha com todos lado a lado, menor preço por
-  item, economia e total por fornecedor.
-
-### 3. Orçamento
-
-| Parâmetro | O que faz |
-|---|---|
-| **Margem (%)** | acréscimo sobre o custo |
-| **Forma de cálculo** | *markup* (custo × (1+m)) ou *margem sobre a venda* (custo ÷ (1−m)) |
-| **Serviço de instalação (%)** | percentual sobre o total de produtos. **0 = orçamento sem serviço** (a linha não aparece na planilha nem no PDF) |
-| **Arredondar preço** | sobe o preço para o próximo múltiplo (ex.: R$ 0,10) |
-| **Validade** | dias, usado no texto da proposta |
-
-**Preço de venda por item:** na coluna *Preço venda* você pode digitar o valor
-final. O campo em branco usa a margem; um valor digitado tem prioridade e vale
-só para aquela linha (o custo e o lucro continuam sendo calculados).
-
-**Fornecedores misturados:** cada linha do orçamento tem o seu próprio fornecedor.
-Dá para montar uma proposta única juntando itens de empresas diferentes — o custo
-de cada item vem do fornecedor escolhido naquela linha.
-
-**Outras despesas** entram como percentual ou valor fixo, e podem incidir sobre
-*produtos*, *serviços* ou o *total acumulado*. Valor negativo funciona como desconto.
-
-O painel lateral mostra em tempo real: custo, produtos, serviços, despesas, total,
-**lucro bruto**, **margem efetiva** e **markup real**.
-
-Há também o **Clonar**, para criar o orçamento de outro fornecedor a partir de um
-pronto — veja abaixo.
-
-### 3.1. Vários fornecedores no mesmo projeto
-
-O fluxo mais comum: você monta o orçamento com um fornecedor e precisa da mesma
-lista com outros fornecedores, mudando só o preço.
-
-1. Abra o orçamento de origem e clique em **Clonar**;
-2. escolha **quem assina** (empresa emitente);
-3. escolha **de onde vêm os preços dos itens** — outro fornecedor ou o mesmo;
-4. defina **Ajuste sobre o preço de venda (%)**: positivo para aumentar, negativo
-   para reduzir. O novo preço parte do preço final do orçamento atual, item por item;
-5. o clone nasce como **rascunho**, no mesmo projeto, pronto para editar.
-
-O modo alternativo *Recalcular pelo custo* ignora o preço anterior e calcula pela
-margem informada, usando o custo do fornecedor escolhido.
-
-Todos os clones ficam listados no projeto, com a coluna **Fornecedor**, para você
-comparar e escolher qual levar ao cliente.
-
-### 4. Planilha gerada
-
-**Gerar planilha** produz um `.xlsx` editável:
-
-- uma aba por orçamento — cabeçalho do fornecedor e do cliente, itens, serviço,
-  despesas e total;
-- aba **CUSTOS** — preços base, com fornecedor e marca. Fica **oculta**: é a
-  memória de cálculo interna e não aparece como aba para o cliente;
-- aba **RESUMO CONSOLIDADO** quando há mais de um orçamento.
-
-As cores, fontes, larguras, mesclagens e formatos seguem o modelo de planilha da
-empresa.
-
-**Nada de cálculo interno no documento do cliente.** A margem, o percentual de
-serviço e a forma de cálculo não aparecem na planilha nem no PDF. Os preços já
-saem fechados: a margem vai embutida na fórmula (`=CUSTOS!E4*(1+0.6)`) em vez de
-ficar num campo visível, e a linha de serviço mostra apenas o valor, sem "%".
-
-**Consolidado do projeto:** em *Projetos → Planilha consolidada*, todas as unidades
-saem em um único arquivo, como no modelo.
-
-### 5. PDF para o cliente
-
-**PDF / Imprimir** abre a proposta já formatada em A4. No diálogo de impressão
-escolha **Salvar como PDF** — o resultado é o documento pronto para enviar ao
-cliente, com cabeçalho da empresa, itens, totais, observações e dados bancários.
-
-A linha de serviço só aparece se o percentual de serviço for maior que zero, e
-nunca mostra o percentual aplicado.
+1. **Cadastre a empresa** em *Configurações* (razão social, CNPJ, endereço, banco e
+   layout padrão).
+2. **Cadastre os fornecedores** e envie a planilha de cada um.
+3. **Cadastre o cliente** e crie um **projeto**.
+4. **Crie o orçamento**, adicione os produtos e ajuste margem, serviço e despesas.
+5. **Clone** para os outros fornecedores, se precisar comparar.
+6. **Gere a planilha** e o **PDF** e envie ao cliente.
 
 ---
 
 ## Backup
 
-Tudo está na pasta `data/` (ou no volume Docker). Copie `orcamentos.db` com o
-sistema parado — é o backup completo: clientes, fornecedores, catálogos e
-orçamentos.
-
-```bash
-docker compose stop
-cp data/orcamentos.db data/backup-$(date +%F).db
-docker compose start
-```
+Tudo está em `data/` — o banco é um único arquivo SQLite. Copie a pasta com o
+container parado e você tem o backup completo: clientes, fornecedores, catálogos,
+orçamentos e usuários.
 
 ---
 
 ## Segurança
 
-- Senhas com **scrypt** e salt individual.
-- Sessão em cookie `HttpOnly` + `SameSite=Lax`, validade de 7 dias.
-- **Proteção CSRF** em todos os formulários.
-- Perfis: usuário comum não vê *Usuários* nem *Configurações*.
-- Bloqueio após 8 tentativas de login erradas.
-- Localmente o servidor escuta só em `127.0.0.1`; no Docker escuta em `0.0.0.0`.
+- senhas com **scrypt** e salt individual;
+- sessão em cookie `HttpOnly` + `SameSite=Lax`;
+- **proteção CSRF** em todos os formulários;
+- bloqueio após 8 tentativas de login erradas;
+- perfis de acesso separados;
+- margem e custo nunca aparecem no documento do cliente.
 
-Ao expor na rede, use **HTTPS** (proxy reverso) e **troque a senha padrão**. A
-senha do `docker-compose.yml` é texto puro — trate como segredo.
+Para expor na internet, coloque atrás de um proxy com **HTTPS** e troque a senha
+padrão.
+
+---
+
+## Tecnologia
+
+| | |
+|---|---|
+| Runtime | Node.js 24 |
+| Banco | SQLite (`node:sqlite`, nativo) |
+| Servidor | `node:http`, sem framework |
+| Interface | HTML renderizado no servidor + CSS próprio |
+| Excel | gerador e leitor XLSX próprios (ZIP + XML) |
+| Dependências externas | **nenhuma** |
+
+Sem `npm install`, sem build de front-end, sem ORM. Um arquivo de banco e um processo.
 
 ---
 
 ## Estrutura
 
 ```
-orcamentos/
-├── iniciar.cmd                     inicia no Windows
-├── instalar.sh                     instala em 1 comando a partir do GHCR
-├── Dockerfile                      imagem de produção
-├── docker-compose.yml              build local + volume de dados
-├── docker-compose.ghcr.yml         usa a imagem pronta do GitHub
-├── docker-compose.casaos.yml       variante sem registry (monta o código)
-├── pacote-casaos.zip               código pronto para copiar ao servidor
-├── .github/workflows/publish.yml   build e push automático para o GHCR
-├── docker/entrypoint.sh            prepara o banco na 1ª execução
-├── server.js                       servidor HTTP
-├── modelo_importacao_produtos.xlsx planilha modelo (e .csv)
-├── exemplo_gerado.xlsx             exemplo da planilha produzida
-├── data/orcamentos.db              banco SQLite
-├── public/                         CSS e JS da interface
+orca3/
+├── server.js                 servidor HTTP
+├── Dockerfile                imagem de produção
+├── docker-compose.ghcr.yml   compose com a imagem publicada
+├── instalar.sh               instalação em um comando
+├── iniciar.cmd               execução no Windows
+├── docs/                     imagens de apresentação
+├── public/                   CSS e JS da interface
 ├── src/
-│   ├── db.js                       schema e acesso ao SQLite
-│   ├── auth.js                     senhas, sessões, CSRF
-│   ├── web.js                      rotas, cookies, formulários, upload
-│   ├── xlsx.js                     leitor/gerador de XLSX próprio (ZIP + XML)
-│   ├── modelo.js                   planilha modelo para fornecedores
-│   ├── importer.js                 detecção de colunas e importação
-│   ├── calc.js                     motor de margem, despesas e serviço
-│   ├── exporter.js                 planilha no layout da empresa
-│   ├── repo.js                     consultas de dados
-│   ├── ui.js                       componentes de tela
-│   └── routes/                     telas: auth, admin, catalog, quotes
+│   ├── db.js                 schema e acesso ao SQLite
+│   ├── auth.js               senhas, sessões, CSRF
+│   ├── web.js                rotas, cookies, formulários, upload
+│   ├── xlsx.js               leitor/gerador de XLSX (ZIP + XML)
+│   ├── layouts.js            os 5 layouts visuais
+│   ├── modelo.js             planilha modelo para fornecedores
+│   ├── importer.js           detecção de colunas e importação
+│   ├── calc.js               motor de margem, despesas e serviço
+│   ├── exporter.js           planilha e comparativo
+│   ├── repo.js               consultas de dados
+│   ├── ui.js                 componentes de tela
+│   └── routes/               telas: auth, admin, catalog, quotes
 └── tools/
-    ├── seed-inicial.js             base zerada + 1 produto de teste
-    ├── seed-demo.js                carrega uma planilha consolidada como demonstração
-    ├── gerar-modelo.js             gera a planilha modelo
-    ├── gerar-pacote.js             gera o pacote-casaos.zip
-    └── selftest.js                 teste de ponta a ponta (86 verificações)
+    ├── seed-inicial.js       base zerada + 1 produto de teste
+    ├── seed-demo.js          carrega uma planilha consolidada
+    ├── gerar-modelo.js       gera a planilha modelo
+    ├── gerar-pacote.js       empacota para deploy manual
+    └── selftest.js           teste de ponta a ponta
 ```
+
+---
 
 ## Testes
 
@@ -433,6 +271,18 @@ orcamentos/
 node tools/selftest.js
 ```
 
-Sobe uma instância isolada com banco temporário e cobre login, cadastros, dois
-layouts de planilha diferentes, planilha modelo (ida e volta), orçamento,
-comparativo, exportação, consolidado, permissões e estrutura das páginas.
+**132 verificações** de ponta a ponta, num banco temporário isolado: login e
+permissões, CSRF, cadastros, importação de dois layouts de planilha diferentes,
+planilha modelo (ida e volta), preço de venda manual, orçamento sem serviço, os
+5 layouts, clonagem com ajuste, comparativo, exportação, consolidado e estrutura
+HTML das telas.
+
+---
+
+## Limitações conhecidas
+
+- O PDF é gerado pelo diálogo de impressão do navegador (*Salvar como PDF*).
+- A comparação entre fornecedores depende de EAN, código do fabricante ou
+  referência estarem preenchidos no catálogo.
+- Não há controle de estoque nem emissão fiscal — o foco é o orçamento.
+- Feito para uso próprio; não é um SaaS multiusuário com isolamento por empresa.

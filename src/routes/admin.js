@@ -5,6 +5,7 @@ import {
 } from '../auth.js';
 import { get, run, all, setting, setSetting, nowIso, audit } from '../db.js';
 import { ownSupplier, saveSupplier } from '../repo.js';
+import { layoutOptions } from '../layouts.js';
 import {
   layout, esc, field, select, textarea, card, pageHeader, button, csrfField,
   badge, emptyState, flash, statusBadge,
@@ -231,6 +232,13 @@ export function registerAdminRoutes() {
             ${field({ label: 'Contato (telefone / e-mail)', name: 'contact', value: company.contact || '' })}
             ${field({ label: 'E-mail', name: 'email', type: 'email', value: company.email || '' })}
             ${textarea({ label: 'Dados bancários', name: 'bank_info', value: company.bank_info || '', rows: 4, hint: 'Uma linha por informação. Aparece no rodapé da proposta.' })}
+            ${select({
+              label: 'Layout do orçamento',
+              name: 'layout',
+              value: company.layout || 'classico',
+              options: layoutOptions(),
+              hint: 'Modelo visual da planilha/PDF desta empresa.',
+            })}
           </div>
         `)}
         ${card('Padrões dos novos orçamentos', `
@@ -269,6 +277,7 @@ export function registerAdminRoutes() {
       email: str(ctx.fields.email),
       phone: company?.phone || '',
       bank_info: str(ctx.fields.bank_info),
+      layout: str(ctx.fields.layout) || company?.layout || 'classico',
       is_own: 1,
       active: 1,
     });

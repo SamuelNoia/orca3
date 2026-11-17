@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS suppliers (
   email      TEXT,
   phone      TEXT,
   bank_info  TEXT,
+  layout     TEXT NOT NULL DEFAULT 'classico',     -- layout visual do orcamento
   is_own     INTEGER NOT NULL DEFAULT 0,           -- 1 = empresa emitente da proposta
   active     INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
@@ -229,6 +230,9 @@ function migrate() {
   };
   if (!colunas('quote_items').includes('price_override')) {
     try { exec('ALTER TABLE quote_items ADD COLUMN price_override REAL'); } catch { /* ja existe */ }
+  }
+  if (!colunas('suppliers').includes('layout')) {
+    try { exec("ALTER TABLE suppliers ADD COLUMN layout TEXT NOT NULL DEFAULT 'classico'"); } catch { /* ja existe */ }
   }
 }
 

@@ -4,6 +4,7 @@
 //   - aba RESUMO CONSOLIDADO quando ha mais de um orcamento
 import { buildXlsx, quoteSheet, safeSheetName } from './xlsx.js';
 import { round2 } from './calc.js';
+import { themeFor } from './layouts.js';
 
 const COLS = [11, 26, 8, 13, 20, 20];
 const money = (v) => round2(Number(v) || 0);
@@ -52,6 +53,14 @@ function obsLines(quote, emitterName) {
 export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
   const emitterName = (emitter?.legal_name || emitter?.name || 'EMPRESA EMITENTE').toUpperCase();
 
+  // o layout vem do cadastro do fornecedor emitente
+  const layoutId = opts.layout || emitter?.layout || 'classico';
+  const T = { ...themeFor(layoutId), layoutId };
+  T.titleH = T.titleH || 28.05;
+  T.headerH = T.headerH || 22.05;
+  T.rowH = T.rowH || 16.05;
+  T.cols = T.cols && T.cols.length === 6 ? T.cols : COLS;
+
   // alocacao global das linhas da aba CUSTOS (comeca na linha 4)
   let custosCursor = 4;
   for (const block of quotes) {
@@ -74,7 +83,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
     const merges = [];
     const push = (cells, h) => { R.push(h ? { cells, h } : { cells }); return R.length; };
 
-    let n = push([{ v: `${emitterName} - ORÇAMENTO DE MATERIAIS E SERVIÇOS`, s: 'title' }], 28.05);
+    let n = push([{ v: `${emitterName} - ORÇAMENTO DE MATERIAIS E SERVIÇOS`, s: 'title' }], T.titleH);
     merges.push(`A${n}:F${n}`);
 
     n = push([
@@ -117,7 +126,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
       { v: 'Qtd', s: 'header' },
       { v: 'V. Unitário (R$)', s: 'header' },
       { v: 'Valor Total (R$)', s: 'header' },
-    ], 22.05);
+    ], T.headerH);
     merges.push(`B${n}:C${n}`);
 
     const firstItemRow = R.length + 1;
@@ -146,7 +155,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
           ? { v: money(line?.unit_price ?? 0), s: 'money' }
           : { v: money(line?.unit_price ?? 0), s: 'money', f: formula },
         { v: money(line?.line_total ?? 0), s: 'money', f: `D${rowNum}*E${rowNum}` },
-      ], 16.05);
+      ], T.rowH);
       merges.push(`B${rowNum}:C${rowNum}`);
     });
     const lastItemRow = R.length;
@@ -194,7 +203,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
           ? { v: money(e.amount), s: 'boldMoney', f: formula }
           : { v: money(e.amount), s: 'boldMoney' },
         { v: money(e.amount), s: 'boldMoney', f: `D${rowNum}*E${rowNum}` },
-      ], 16.05);
+      ], T.rowH);
       merges.push(`B${rowNum}:C${rowNum}`);
       expenseRows.push(rowNum);
     }
@@ -204,7 +213,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
       { v: 'VALOR TOTAL DO ORÇAMENTO (PRODUTOS + SERVIÇOS)', s: 'totalLabel' },
       null, null, null, null,
       { v: money(c.total), s: 'totalMoney', f: `SUM(F${firstItemRow}:F${totalRow - 1})` },
-    ], 22.05);
+    ], T.headerH);
     merges.push(`A${totalRow}:E${totalRow}`);
 
     block.layout = {
@@ -240,7 +249,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
 
     return {
       name: block.sheetName,
-      cols: COLS,
+      cols: T.cols,
       rows: R,
       merges,
       page: { orientation: 'portrait', paperSize: 9, fitToWidth: 1, centerH: true },
@@ -249,7 +258,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
 
   // ------- aba CUSTOS
   const custosRows = [
-    { cells: [{ v: `${emitterName} - TABELA DE PREÇOS BASE / CUSTOS DOS MATERIAIS (INTERNO)`, s: 'title' }], h: 28.05 },
+    { cells: [{ v: `${emitterName} - TABELA DE PREÇOS BASE / CUSTOS DOS MATERIAIS (INTERNO)`, s: 'title' }], h: T.titleH },
     { cells: [] },
     {
       cells: [
@@ -261,7 +270,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
         { v: 'Fornecedor', s: 'header' },
         { v: 'Marca', s: 'header' },
       ],
-      h: 22.05,
+      h: T.headerH,
     },
   ];
 
@@ -277,7 +286,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
           { v: it.supplier_name || '', s: 'cell' },
           { v: it.brand || '', s: 'cell' },
         ],
-        h: 16.05,
+        h: T.rowH,
       });
     });
   }
@@ -301,7 +310,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
     const merges = [];
     const push = (cells, h) => { R.push(h ? { cells, h } : { cells }); return R.length; };
 
-    push([{ v: `${emitterName} - RESUMO GERAL DOS ORÇAMENTOS`, s: 'title' }], 28.05);
+    push([{ v: `${emitterName} - RESUMO GERAL DOS ORÇAMENTOS`, s: 'title' }], T.titleH);
     merges.push('A1:F1');
     R.push({ cells: [] });
     push([{ v: `CLIENTE: ${client?.name || ''}`, s: 'section' }], 18);
@@ -314,7 +323,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
       { v: 'Serviços de Instalação (R$)', s: 'header' },
       { v: 'Despesas (R$)', s: 'header' },
       { v: 'Total Geral (R$)', s: 'header' },
-    ], 22.05);
+    ], T.headerH);
 
     const firstData = R.length + 1;
     quotes.forEach((block, i) => {
@@ -341,7 +350,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
       { v: 'VALOR TOTAL CONSOLIDADO', s: 'totalLabel' },
       null, null, null, null,
       { v: money(quotes.reduce((s, b) => s + b.calc.total, 0)), s: 'totalMoney', f: `SUM(F${firstData}:F${lastData})` },
-    ], 22.05);
+    ], T.headerH);
     merges.push(`A${R.length}:E${R.length}`);
 
     allSheets.push({
@@ -358,20 +367,21 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
     : `Orçamento - ${quotes[0]?.quote.title || ''}`;
 
   return {
-    buffer: buildXlsx(allSheets, { title, creator: emitterName }),
+    buffer: buildXlsx(allSheets, { title, creator: emitterName, theme: T }),
     filename: `${slug(title)}.xlsx`,
     sheets: allSheets.map((s) => s.name),
   };
 }
 
 /** Planilha de comparativo de cotacoes entre fornecedores. */
-export function buildComparisonWorkbook({ quote, items, offersByItem, suppliers, client }) {
+export function buildComparisonWorkbook({ quote, items, offersByItem, suppliers, client, layout }) {
+  const T = themeFor(layout || quote?.layout || 'classico');
   const R = [];
   const merges = [];
   const push = (cells, h) => { R.push(h ? { cells, h } : { cells }); return R.length; };
   const lastCol = 3 + suppliers.length + 2;
 
-  push([{ v: 'COMPARATIVO DE COTAÇÕES ENTRE FORNECEDORES', s: 'title' }], 28.05);
+  push([{ v: 'COMPARATIVO DE COTAÇÕES ENTRE FORNECEDORES', s: 'title' }], T.titleH);
   merges.push(`A1:${colLetter(lastCol)}1`);
 
   push([{ v: `Orçamento: ${quote.title || ''}    |    Cliente: ${client?.name || ''}`, s: 'section' }], 18);
@@ -445,7 +455,7 @@ export function buildComparisonWorkbook({ quote, items, offersByItem, suppliers,
   }];
 
   return {
-    buffer: buildXlsx(sheets, { title: `Comparativo - ${quote.title || ''}` }),
+    buffer: buildXlsx(sheets, { title: `Comparativo - ${quote.title || ''}`, theme: T }),
     filename: `comparativo_${slug(quote.title || 'orcamento')}.xlsx`,
   };
 }

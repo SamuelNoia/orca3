@@ -6,6 +6,7 @@ import { requireUser } from '../auth.js';
 import { get, run, all, nowIso, audit } from '../db.js';
 import { TMP_DIR } from '../config.js';
 import { buildModeloXlsx, buildModeloCsv } from '../modelo.js';
+import { layoutOptions, layoutInfo, layoutExampleLinks, LAYOUTS } from '../layouts.js';
 import {
   listClients, getClient, listSuppliers, getSupplier, saveSupplier,
   searchProducts, countProducts, getProduct,
@@ -192,6 +193,13 @@ export function registerCatalogRoutes() {
             ${field({ label: 'E-mail', name: 'email', type: 'email', value: v.email || '' })}
             ${field({ label: 'Telefone', name: 'phone', value: v.phone || '' })}
             ${textarea({ label: 'Dados bancários / PIX', name: 'bank_info', value: v.bank_info || '', rows: 4, hint: 'Aparece no rodapé quando este fornecedor é o emitente da proposta.' })}
+            ${select({
+              label: 'Layout do orçamento',
+              name: 'layout',
+              value: v.layout || 'classico',
+              options: layoutOptions(),
+              hint: `Modelo visual da planilha/PDF quando este fornecedor assina a proposta. Ver exemplo: ${layoutExampleLinks()}`,
+            })}
           </div>
           <label class="field" style="flex-direction:row;align-items:center;gap:8px;margin-top:8px">
             <input type="checkbox" name="is_own" value="1" ${v.is_own ? 'checked' : ''}>
@@ -282,6 +290,7 @@ export function registerCatalogRoutes() {
       email: str(ctx.fields.email),
       phone: str(ctx.fields.phone),
       bank_info: str(ctx.fields.bank_info),
+      layout: str(ctx.fields.layout) || 'classico',
       is_own: isOwn ? 1 : 0,
       active: 1,
     });
@@ -306,6 +315,7 @@ export function registerCatalogRoutes() {
       email: str(ctx.fields.email),
       phone: str(ctx.fields.phone),
       bank_info: str(ctx.fields.bank_info),
+      layout: str(ctx.fields.layout) || 'classico',
       is_own: isOwn ? 1 : 0,
       active: 1,
     });

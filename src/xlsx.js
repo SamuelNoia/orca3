@@ -230,72 +230,113 @@ export const S = {
   headerLeft: 23,
 };
 
-const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+const THEME_PADRAO = {
+  font: 'Segoe UI',
+  szBody: 9,
+  szTitle: 13,
+  szSection: 10,
+  szHeader: 10,
+  szTotal: 11,
+  primary: '1F4E78',
+  headerFill: '2F5597',
+  soft: 'D9E1F2',
+  text: '000000',
+  titleText: 'FFFFFF',
+  sectionText: '1F4E78',
+  headerText: 'FFFFFF',
+  totalText: 'FFFFFF',
+  note: '444444',
+  borderColor: 'B4C6E7',
+  borderStyle: 'thin',
+  borders: 'all',
+  headerAlign: 'center',
+  titleAlign: 'center',
+};
+
+/** Monta o styles.xml a partir do tema (layout) escolhido. */
+function stylesXml(input) {
+  const t = { ...THEME_PADRAO, ...(input || {}) };
+  const rgb = (hex) => `FF${String(hex).replace('#', '').toUpperCase().slice(0, 6)}`;
+  const font = (size, bold, color) => `<font>${bold ? '<b/>' : ''}<sz val="${size}"/><color rgb="${rgb(color)}"/><name val="${xmlEsc(t.font)}"/><family val="2"/></font>`;
+  const lado = (nome, estilo) => (estilo
+    ? `<${nome} style="${estilo}"><color rgb="${rgb(t.borderColor)}"/></${nome}>`
+    : `<${nome}/>`);
+
+  let borda;
+  if (t.borders === 'none') {
+    borda = '<border><left/><right/><top/><bottom/><diagonal/></border>';
+  } else if (t.borders === 'bottom') {
+    borda = `<border>${lado('left')}${lado('right')}${lado('top')}${lado('bottom', 'thin')}<diagonal/></border>`;
+  } else {
+    borda = `<border>${lado('left', t.borderStyle)}${lado('right', t.borderStyle)}${lado('top', t.borderStyle)}${lado('bottom', t.borderStyle)}<diagonal/></border>`;
+  }
+
+  const fonts = [
+    font(t.szBody, false, t.text),
+    font(t.szTitle, true, t.titleText),
+    font(t.szSection, true, t.sectionText),
+    font(t.szBody, true, t.text),
+    font(t.szHeader, true, t.headerText),
+    font(t.szTotal, true, t.totalText),
+    font(t.szHeader, true, t.text),
+    font(t.szBody, false, t.note),
+  ].join('');
+
+  const fills = [
+    '<fill><patternFill patternType="none"/></fill>',
+    '<fill><patternFill patternType="gray125"/></fill>',
+    `<fill><patternFill patternType="solid"><fgColor rgb="${rgb(t.primary)}"/><bgColor indexed="64"/></patternFill></fill>`,
+    `<fill><patternFill patternType="solid"><fgColor rgb="${rgb(t.headerFill)}"/><bgColor indexed="64"/></patternFill></fill>`,
+    `<fill><patternFill patternType="solid"><fgColor rgb="${rgb(t.soft)}"/><bgColor indexed="64"/></patternFill></fill>`,
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill>',
+  ].join('');
+
+  const xfs = [
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>',
+    `<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="${t.titleAlign}" vertical="center"/></xf>`,
+    '<xf numFmtId="0" fontId="2" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>',
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>',
+    `<xf numFmtId="0" fontId="4" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="${t.headerAlign}" vertical="center" wrapText="1"/></xf>`,
+    '<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>',
+    '<xf numFmtId="164" fontId="0" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+    '<xf numFmtId="3" fontId="0" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>',
+    '<xf numFmtId="166" fontId="3" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>',
+    '<xf numFmtId="164" fontId="5" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="5" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="164" fontId="3" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="7" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="0" fontId="6" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+    `<xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="${t.headerAlign}" vertical="center" wrapText="1"/></xf>`,
+    '<xf numFmtId="0" fontId="6" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+    '<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+    '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right"/></xf>',
+    '<xf numFmtId="0" fontId="4" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>',
+  ].join('');
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <numFmts count="3">
 <numFmt numFmtId="164" formatCode="&quot;R$&quot;\\ #,##0.00"/>
 <numFmt numFmtId="165" formatCode="#,##0.00"/>
 <numFmt numFmtId="166" formatCode="0.0%"/>
 </numFmts>
-<fonts count="8">
-<font><sz val="9"/><color rgb="FF000000"/><name val="Segoe UI"/><family val="2"/></font>
-<font><b/><sz val="13"/><color rgb="FFFFFFFF"/><name val="Segoe UI"/><family val="2"/></font>
-<font><b/><sz val="10"/><color rgb="FF1F4E78"/><name val="Segoe UI"/><family val="2"/></font>
-<font><b/><sz val="9"/><color rgb="FF000000"/><name val="Segoe UI"/><family val="2"/></font>
-<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Segoe UI"/><family val="2"/></font>
-<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Segoe UI"/><family val="2"/></font>
-<font><b/><sz val="10"/><color rgb="FF000000"/><name val="Segoe UI"/><family val="2"/></font>
-<font><sz val="9"/><color rgb="FF444444"/><name val="Segoe UI"/><family val="2"/></font>
-</fonts>
-<fills count="6">
-<fill><patternFill patternType="none"/></fill>
-<fill><patternFill patternType="gray125"/></fill>
-<fill><patternFill patternType="solid"><fgColor rgb="FF1F4E78"/><bgColor indexed="64"/></patternFill></fill>
-<fill><patternFill patternType="solid"><fgColor rgb="FF2F5597"/><bgColor indexed="64"/></patternFill></fill>
-<fill><patternFill patternType="solid"><fgColor rgb="FFD9E1F2"/><bgColor indexed="64"/></patternFill></fill>
-<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill>
-</fills>
-<borders count="2">
-<border><left/><right/><top/><bottom/><diagonal/></border>
-<border>
-<left style="thin"><color rgb="FFB4C6E7"/></left>
-<right style="thin"><color rgb="FFB4C6E7"/></right>
-<top style="thin"><color rgb="FFB4C6E7"/></top>
-<bottom style="thin"><color rgb="FFB4C6E7"/></bottom>
-<diagonal/>
-</border>
-</borders>
+<fonts count="8">${fonts}</fonts>
+<fills count="6">${fills}</fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>${borda}</borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
 <cellXfs count="24">
-<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-<xf numFmtId="0" fontId="2" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>
-<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
-<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-<xf numFmtId="0" fontId="4" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
-<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-<xf numFmtId="164" fontId="0" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-<xf numFmtId="3" fontId="0" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-<xf numFmtId="166" fontId="3" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-<xf numFmtId="164" fontId="5" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-<xf numFmtId="0" fontId="5" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-<xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
-<xf numFmtId="164" fontId="3" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>
-<xf numFmtId="0" fontId="7" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
-<xf numFmtId="0" fontId="6" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-<xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-<xf numFmtId="0" fontId="6" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-<xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right"/></xf>
-<xf numFmtId="0" fontId="4" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+${xfs}
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 <dxfs count="0"/>
 <tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
 </styleSheet>`;
+}
 
 // ---------------------------------------------------------------- escrita
 function resolveStyle(s) {
@@ -453,7 +494,7 @@ ${sheetEntries.map((s) => `<Relationship Id="${s.rid}" Type="http://schemas.open
 </Relationships>`,
   });
 
-  files.push({ name: 'xl/styles.xml', data: STYLES_XML });
+  files.push({ name: 'xl/styles.xml', data: stylesXml(meta.theme) });
 
   const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 

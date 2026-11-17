@@ -552,6 +552,43 @@ async function main() {
   const clonePage = await http.get(`/orcamentos/${cloneId}`);
   ok('clone abre para edicao', clonePage.status === 200 && clonePage.text.includes('EMEB Bela Vista - Beta'));
 
+  section('Layouts do orcamento');
+  const formForn = await http.get(`/fornecedores/${idAlfa}/editar`);
+  ok('fornecedor tem campo de layout', formForn.text.includes('Layout do orçamento'));
+  for (const l of ['classico', 'moderno', 'compacto', 'formal', 'executivo']) {
+    ok(`layout ${l} disponivel no cadastro`, formForn.text.includes(`value="${l}"`));
+  }
+
+  const exemplos = {};
+  for (const l of ['classico', 'moderno', 'compacto', 'formal', 'executivo']) {
+    const ex = await http.get(`/layout-exemplo/${l}.xlsx`);
+    const okZip = ex.status === 200 && ex.buffer[0] === 0x50 && ex.buffer[1] === 0x4b;
+    ok(`exemplo do layout ${l} gera planilha`, okZip, `status=${ex.status}`);
+    if (okZip) {
+      const st = zipRead(ex.buffer).get('xl/styles.xml').toString('utf8');
+      exemplos[l] = (st.match(/<name val="([^"]+)"/) || [])[1];
+    }
+  }
+  ok('layouts usam fontes diferentes',
+    new Set(Object.values(exemplos)).size >= 4,
+    Object.entries(exemplos).map(([k, v]) => `${k}=${v}`).join(', '));
+
+  const salvarLayout = await http.post(`/fornecedores/${idAlfa}`, {
+    _csrf: tokenOf(formForn.text),
+    name: 'Fornecedor Alfa',
+    legal_name: 'ALFA MATERIAIS ELETRICOS LTDA',
+    cnpj: '11.111.111/0001-11',
+    layout: 'executivo',
+    is_own: '1',
+    bank_info: 'Banco do Brasil 001',
+  });
+  ok('layout salvo no cadastro do fornecedor', salvarLayout.status === 303);
+
+  const xLayout = await http.get(`/orcamentos/${orcId}/exportar.xlsx`);
+  const stylesLayout = zipRead(xLayout.buffer).get('xl/styles.xml').toString('utf8');
+  const fonteGerada = (stylesLayout.match(/<name val="([^"]+)"/) || [])[1];
+  ok('orcamento usa o layout do fornecedor emitente', fonteGerada === 'Verdana', `fonte=${fonteGerada}`);
+
   section('Planilha modelo');
   const modelo = await http.get('/modelo-importacao.xlsx');
   ok('modelo .xlsx disponivel', modelo.status === 200 && modelo.buffer[0] === 0x50, `status=${modelo.status}`);

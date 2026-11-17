@@ -7,7 +7,8 @@ import {
   searchProducts, getProduct, matchingOffers, getClient, getSupplier, dashboardStats,
 } from '../repo.js';
 import { buildQuoteWorkbook, buildComparisonWorkbook } from '../exporter.js';
-import { fmtMoney, fmtQty, fmtPct, unitPriceFor, round2 } from '../calc.js';
+import { fmtMoney, fmtQty, fmtPct, unitPriceFor, round2, computeQuote } from '../calc.js';
+import { layoutInfo } from '../layouts.js';
 import {
   layout, esc, field, select, textarea, card, pageHeader, button, csrfField,
   badge, emptyState, flash, statusBadge,
@@ -886,6 +887,47 @@ export function registerQuoteRoutes() {
   });
 
   // ---------------------------------------------------------------- exportacoes
+  // ---------------------------------------------------------------- exemplos de layout
+  routeGet('/layout-exemplo/:id.xlsx', (ctx) => {
+    requireUser(ctx);
+    const id = String(ctx.params.id);
+    const info = layoutInfo(id);
+
+    const itens = [
+      { internal_code: '6881', description: 'CAIXA CABO REDE SOHO', qty: 2, unit_cost: 2135 },
+      { internal_code: '661', description: 'CABO PP 2C 2,5 MM', qty: 300, unit_cost: 17 },
+      { internal_code: '7691', description: 'ELETRODUTO CORRUGADO 3/4', qty: 100, unit_cost: 24 },
+      { internal_code: '10242', description: 'RACK 12U FECHADO', qty: 7, unit_cost: 2450 },
+      { internal_code: '28084', description: 'CONECTOR RJ45 CAT6 PASSAGEM', qty: 120, unit_cost: 11 },
+    ];
+    const quote = {
+      title: `Exemplo ${info.name}`,
+      location: 'Redes, Elétrica e CFTV - Obra Exemplo',
+      margin_pct: 60, margin_mode: 'markup', service_pct: 65, valid_days: 15, rounding: 0,
+    };
+    const expenses = [];
+    const calc = computeQuote(quote, itens, expenses);
+
+    const result = buildQuoteWorkbook({
+      quotes: [{ quote, items: itens, expenses, calc }],
+      client: {
+        name: 'CLIENTE EXEMPLO',
+        cnpj: '00.000.000/0002-00',
+        address: 'Avenida do Cliente, 200 - Cidade',
+      },
+      emitter: {
+        legal_name: 'EMPRESA EXEMPLO LTDA',
+        cnpj: '00.000.000/0001-00',
+        address: 'Rua Exemplo, 100 - Cidade',
+        contact: '(00) 00000-0000 | contato@exemplo.com',
+        bank_info: 'Razão Social: EMPRESA EXEMPLO LTDA\nCNPJ / PIX: 00.000.000/0001-00\nBanco Exemplo (000) - Agência 0000-0 - Conta 00000-0',
+        layout: id,
+      },
+      opts: { includeSummary: false, layout: id },
+    });
+    return download(`layout-${info.id}.xlsx`, result.buffer);
+  });
+
   routeGet('/orcamentos/:id/exportar.xlsx', (ctx) => {
     requireUser(ctx);
     const full = loadQuote(Number(ctx.params.id));
@@ -921,6 +963,7 @@ export function registerQuoteRoutes() {
       offersByItem: full.offers,
       suppliers,
       client: full.client,
+      layout: full.emitter?.layout,
     });
     return download(result.filename, result.buffer);
   });
