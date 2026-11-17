@@ -308,8 +308,26 @@ de cada item vem do fornecedor escolhido naquela linha.
 O painel lateral mostra em tempo real: custo, produtos, serviços, despesas, total,
 **lucro bruto**, **margem efetiva** e **markup real**.
 
-Há também **Duplicar**, para criar o orçamento da próxima escola a partir de um
-já pronto.
+Há também o **Clonar**, para criar o orçamento de outro fornecedor a partir de um
+pronto — veja abaixo.
+
+### 3.1. Vários fornecedores no mesmo projeto
+
+O fluxo mais comum: você monta o orçamento com um fornecedor e precisa da mesma
+lista com outros fornecedores, mudando só o preço.
+
+1. Abra o orçamento de origem e clique em **Clonar**;
+2. escolha **quem assina** (empresa emitente);
+3. escolha **de onde vêm os preços dos itens** — outro fornecedor ou o mesmo;
+4. defina **Ajuste sobre o preço de venda (%)**: positivo para aumentar, negativo
+   para reduzir. O novo preço parte do preço final do orçamento atual, item por item;
+5. o clone nasce como **rascunho**, no mesmo projeto, pronto para editar.
+
+O modo alternativo *Recalcular pelo custo* ignora o preço anterior e calcula pela
+margem informada, usando o custo do fornecedor escolhido.
+
+Todos os clones ficam listados no projeto, com a coluna **Fornecedor**, para você
+comparar e escolher qual levar ao cliente.
 
 ### 4. Planilha gerada
 

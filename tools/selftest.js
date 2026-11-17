@@ -6,11 +6,13 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { readTable, zipRead } from '../src/xlsx.js';
+import { DatabaseSync } from 'node:sqlite';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 3987;
 const BASE = `http://127.0.0.1:${PORT}`;
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'orc-test-'));
+const DB_PATH = path.join(TMP, 'teste.db');
 
 let passed = 0;
 let failed = 0;
@@ -145,7 +147,7 @@ const child = spawn(process.execPath, ['server.js'], {
   env: {
     ...process.env,
     PORT: String(PORT),
-    DB_FILE: path.join(TMP, 'teste.db'),
+    DB_FILE: DB_PATH,
     DATA_DIR: TMP,
     ADMIN_EMAIL: 'admin@teste.local',
     ADMIN_PASSWORD: 'senha12345',
@@ -509,6 +511,47 @@ async function main() {
     printComSvc.text.includes('Serviço de instalação') && !printComSvc.text.includes('Serviço de instalação ('));
   ok('impressao sem percentual de reajuste', !/reajuste conforme percentual/i.test(printComSvc.text));
 
+  section('Clonar orcamento para outro fornecedor');
+  const formClone = await http.get(`/orcamentos/${orcId}/clonar`);
+  ok('formulario de clonagem abre',
+    formClone.status === 200 && formClone.text.includes('Clonar para outro fornecedor'));
+
+  const clone = await http.post(`/orcamentos/${orcId}/clonar`, {
+    _csrf: tokenOf(formClone.text),
+    title: 'EMEB Bela Vista - Beta',
+    supplier_id: String(betaId),
+    item_supplier_id: String(betaId),
+    mode: 'preco',
+    adjust_pct: '10',
+    margin_pct: '60',
+    service_pct: '65',
+    valid_days: '15',
+    copy_expenses: '1',
+  });
+  ok('clone criado', clone.status === 303, `status=${clone.status}`);
+  const cloneId = Number((/\/orcamentos\/(\d+)/.exec(String(clone.location)) || [])[1] || 0);
+  ok('id do clone', cloneId > 0, `id=${cloneId}`);
+
+  const dbCheck = new DatabaseSync(DB_PATH, { readOnly: true });
+  const qOrig = dbCheck.prepare('SELECT total_cache, supplier_id, project_id FROM quotes WHERE id = ?').get(orcId);
+  const qClone = dbCheck.prepare('SELECT total_cache, supplier_id, project_id FROM quotes WHERE id = ?').get(cloneId);
+  const itClone = dbCheck.prepare('SELECT unit_cost, price_override FROM quote_items WHERE quote_id = ?').all(cloneId);
+  const itOrig = dbCheck.prepare('SELECT COUNT(*) AS n FROM quote_items WHERE quote_id = ?').get(orcId);
+  dbCheck.close();
+
+  ok('clone no mesmo projeto', qClone.project_id === qOrig.project_id);
+  ok('clone com o novo fornecedor emitente', qClone.supplier_id === betaId, `emitente=${qClone.supplier_id} esperado=${betaId}`);
+  ok('clone com a mesma quantidade de itens', itClone.length === itOrig.n, `${itClone.length} vs ${itOrig.n}`);
+  ok('todos os itens com preco derivado', itClone.every((x) => x.price_override !== null && x.price_override > 0));
+
+  const esperado = Math.round(qOrig.total_cache * 1.1 * 100) / 100;
+  const diff = Math.abs(qClone.total_cache - esperado);
+  ok('total do clone = total original + 10%',
+    diff < 0.05, `original=${qOrig.total_cache} clone=${qClone.total_cache} esperado=${esperado}`);
+
+  const clonePage = await http.get(`/orcamentos/${cloneId}`);
+  ok('clone abre para edicao', clonePage.status === 200 && clonePage.text.includes('EMEB Bela Vista - Beta'));
+
   section('Planilha modelo');
   const modelo = await http.get('/modelo-importacao.xlsx');
   ok('modelo .xlsx disponivel', modelo.status === 200 && modelo.buffer[0] === 0x50, `status=${modelo.status}`);
@@ -566,7 +609,7 @@ async function main() {
     '/', '/clientes', '/clientes/novo', '/fornecedores', '/fornecedores/novo',
     `/fornecedores/${idAlfa}`, `/fornecedores/${idAlfa}/importar`, '/produtos',
     '/projetos', `/projetos/${projId}`, '/orcamentos', '/orcamentos/novo',
-    `/orcamentos/${orcId}`, `/orcamentos/${orcId}/imprimir`, '/usuarios',
+    `/orcamentos/${orcId}`, `/orcamentos/${orcId}/clonar`, `/orcamentos/${orcId}/imprimir`, '/usuarios',
     '/usuarios/novo', '/configuracoes',
   ];
   for (const p of paginas) {

@@ -133,7 +133,12 @@ export function getProject(id) {
 }
 
 export function projectQuotes(projectId) {
-  return all('SELECT * FROM quotes WHERE project_id = ? ORDER BY id', projectId);
+  return all(
+    `SELECT q.*, s.name AS emitter_name
+       FROM quotes q LEFT JOIN suppliers s ON s.id = q.supplier_id
+      WHERE q.project_id = ? ORDER BY q.id`,
+    projectId,
+  );
 }
 
 // ---------------------------------------------------------------- orcamentos

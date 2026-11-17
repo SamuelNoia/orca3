@@ -1,4 +1,4 @@
-import { get as routeGet, post, str, num, htmlPage, redirect, HttpError, download } from '../web.js';
+import { get as routeGet, post, str, num, bool, htmlPage, redirect, HttpError, download } from '../web.js';
 import { requireUser } from '../auth.js';
 import { get, run, all, nowIso, audit, setting, tx } from '../db.js';
 import {
@@ -7,7 +7,7 @@ import {
   searchProducts, getProduct, matchingOffers, getClient, getSupplier, dashboardStats,
 } from '../repo.js';
 import { buildQuoteWorkbook, buildComparisonWorkbook } from '../exporter.js';
-import { fmtMoney, fmtQty, fmtPct, unitPriceFor } from '../calc.js';
+import { fmtMoney, fmtQty, fmtPct, unitPriceFor, round2 } from '../calc.js';
 import {
   layout, esc, field, select, textarea, card, pageHeader, button, csrfField,
   badge, emptyState, flash, statusBadge,
@@ -22,6 +22,22 @@ const brQty = (v) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionD
 
 function touch(quoteId) {
   updateQuoteTotals(quoteId);
+}
+
+/** Procura o mesmo item (EAN / cod. fabricante / referencia) no catalogo de outro fornecedor. */
+function produtoDoFornecedor(item, supplierId) {
+  const conds = [];
+  const params = [supplierId];
+  if (item.ean) { conds.push('ean = ?'); params.push(item.ean); }
+  if (item.manufacturer_code) { conds.push('manufacturer_code = ?'); params.push(item.manufacturer_code); }
+  if (item.reference) { conds.push('reference = ?'); params.push(item.reference); }
+  if (!conds.length) return null;
+  return get(
+    `SELECT * FROM products
+      WHERE supplier_id = ? AND active = 1 AND (${conds.join(' OR ')})
+      ORDER BY unit_price ASC LIMIT 1`,
+    ...params,
+  );
 }
 
 // ---------------------------------------------------------------- painel
@@ -125,10 +141,12 @@ export function registerQuoteRoutes() {
 
     const rows = quotes.map((q) => `<tr>
       <td class="strong"><a href="/orcamentos/${q.id}">${esc(q.title)}</a></td>
+      <td class="small">${esc(q.emitter_name || '—')}</td>
       <td>${statusBadge(q.status)}</td>
       <td class="num">${fmtMoney(q.total_cache)}</td>
       <td class="right nowrap">
-        <a class="btn sm" href="/orcamentos/${q.id}">Abrir</a>
+        <a class="btn sm" href="/orcamentos/${q.id}">Editar</a>
+        <a class="btn sm" href="/orcamentos/${q.id}/clonar">Clonar</a>
         <a class="btn sm" href="/orcamentos/${q.id}/exportar.xlsx">XLSX</a>
       </td>
     </tr>`).join('');
@@ -144,9 +162,9 @@ export function registerQuoteRoutes() {
       ${flash(ctx)}
       ${card(`${quotes.length} orçamento(s) · ${fmtMoney(total)}`, quotes.length
         ? `<div class="table-wrap"><table>
-            <thead><tr><th>Unidade / Título</th><th>Situação</th><th class="num">Total</th><th></th></tr></thead>
+            <thead><tr><th>Unidade / Título</th><th>Fornecedor</th><th>Situação</th><th class="num">Total</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
-            <tfoot><tr class="total"><td colspan="2">Total do projeto</td><td class="num">${fmtMoney(total)}</td><td></td></tr></tfoot>
+            <tfoot><tr class="total"><td colspan="3">Total do projeto</td><td class="num">${fmtMoney(total)}</td><td></td></tr></tfoot>
           </table></div>`
         : emptyState('Nenhum orçamento neste projeto ainda.'), { flush: true })}
     `);
@@ -358,7 +376,7 @@ export function registerQuoteRoutes() {
         actions: `<a class="btn primary" href="/orcamentos/${quote.id}/exportar.xlsx">Gerar planilha</a>
                   <a class="btn" href="/orcamentos/${quote.id}/comparativo.xlsx">Comparativo</a>
                   <a class="btn" href="/orcamentos/${quote.id}/imprimir">PDF / Imprimir</a>
-                  <form class="inline-form" method="post" action="/orcamentos/${quote.id}/duplicar">${csrfField(ctx)}<button class="btn" title="Duplicar cabeçalho e itens">Duplicar</button></form>`,
+                  <a class="btn" href="/orcamentos/${quote.id}/clonar" title="Criar outro orçamento a partir deste, trocando o fornecedor">Clonar</a>`,
       })}
       ${flash(ctx)}
       <div class="quote-layout">
@@ -680,6 +698,183 @@ export function registerQuoteRoutes() {
     touch(newId);
     audit(user.id, 'quote.duplicate', 'quotes', newId, `origem ${id}`);
     return redirect(`/orcamentos/${newId}?msg=${encodeURIComponent('Orçamento duplicado. Ajuste os dados da nova unidade.')}`);
+  });
+
+  // ---------------------------------------------------------------- clonar
+  routeGet('/orcamentos/:id/clonar', (ctx) => {
+    requireUser(ctx);
+    const id = Number(ctx.params.id);
+    const full = loadQuote(id);
+    if (!full) throw new HttpError(404, 'Orçamento não encontrado.');
+
+    const fornecedores = listSuppliers(true);
+    const emitenteAtual = fornecedores.find((s) => s.id === full.quote.supplier_id);
+    const sugestaoTitulo = `${full.quote.title} — novo fornecedor`;
+
+    return render(ctx, 'Clonar orçamento', `
+      ${pageHeader({
+        title: 'Clonar para outro fornecedor',
+        subtitle: `Deriva um novo orçamento a partir de <strong>${esc(full.quote.title)}</strong> (${fmtMoney(full.calc.total)})`,
+        back: { href: `/orcamentos/${id}`, label: full.quote.title },
+      })}
+      ${flash(ctx)}
+      <div class="grid-2">
+        <div>
+          ${card(null, `
+            <form method="post" action="/orcamentos/${id}/clonar">
+              ${csrfField(ctx)}
+              <div class="form-grid">
+                ${field({ label: 'Título do novo orçamento', name: 'title', value: sugestaoTitulo, required: true, className: 'span2' })}
+                ${select({
+                  label: 'Empresa emitente (quem assina)',
+                  name: 'supplier_id',
+                  value: full.quote.supplier_id || '',
+                  options: fornecedores.map((s) => ({ value: s.id, label: `${s.name}${s.is_own ? ' (emitente)' : ''}` })),
+                })}
+                ${select({
+                  label: 'Fonte dos preços dos itens',
+                  name: 'item_supplier_id',
+                  value: '',
+                  options: [{ value: '', label: 'Manter o fornecedor de cada item' }]
+                    .concat(fornecedores.map((s) => ({ value: s.id, label: `Buscar preços em ${s.name}` }))),
+                  hint: 'Se o item não existir no fornecedor escolhido, o custo original é mantido.',
+                })}
+                ${select({
+                  label: 'Como calcular o preço de venda',
+                  name: 'mode',
+                  value: 'preco',
+                  options: [
+                    { value: 'preco', label: 'Preço do orçamento atual + ajuste (%)' },
+                    { value: 'custo', label: 'Recalcular pelo custo com a margem (%)' },
+                  ],
+                  hint: 'A primeira opção mantém a proposta anterior como base.',
+                })}
+                ${field({ label: 'Ajuste sobre o preço de venda (%)', name: 'adjust_pct', value: '10', hint: 'Use negativo para reduzir. Ex.: 10 = 10% acima do orçamento atual.' })}
+                ${field({ label: 'Margem (%) do novo orçamento', name: 'margin_pct', value: full.quote.margin_pct, hint: 'Usada quando você escolhe recalcular pelo custo.' })}
+                ${field({ label: 'Serviço de instalação (%)', name: 'service_pct', value: full.quote.service_pct, hint: '0 = sem linha de serviço.' })}
+                ${field({ label: 'Validade (dias)', name: 'valid_days', value: full.quote.valid_days })}
+              </div>
+              <label class="field" style="flex-direction:row;align-items:center;gap:8px;margin-top:10px">
+                <input type="checkbox" name="copy_expenses" value="1" checked>
+                <span style="margin:0;font-weight:500">Copiar as despesas (frete, taxas, descontos)</span>
+              </label>
+              <div class="form-actions">
+                ${button('Criar orçamento clonado', { kind: 'primary' })}
+                ${button('Cancelar', { kind: 'ghost', href: `/orcamentos/${id}` })}
+              </div>
+            </form>
+          `)}
+        </div>
+        <div>
+          ${card('Origem', `
+            <dl class="summary">
+              <div class="row"><span>Orçamento</span><span>${esc(full.quote.title)}</span></div>
+              <div class="row"><span>Cliente</span><span>${esc(full.client?.name || '')}</span></div>
+              <div class="row"><span>Projeto</span><span>${esc(full.project?.name || '—')}</span></div>
+              <div class="row"><span>Emitente</span><span>${esc(emitenteAtual?.name || '—')}</span></div>
+              <div class="row"><span>Itens</span><span>${full.items.length}</span></div>
+              <div class="row"><span>Margem atual</span><span>${fmtPct(full.quote.margin_pct)}</span></div>
+              <div class="row total"><span>Total atual</span><span>${fmtMoney(full.calc.total)}</span></div>
+            </dl>
+            <p class="small muted" style="margin:14px 0 0">
+              O clone nasce como <strong>rascunho</strong>, no mesmo projeto, pronto para editar.
+            </p>
+          `)}
+        </div>
+      </div>
+    `, true);
+  });
+
+  post('/orcamentos/:id/clonar', (ctx) => {
+    const user = requireUser(ctx);
+    const id = Number(ctx.params.id);
+    const full = loadQuote(id);
+    if (!full) throw new HttpError(404, 'Orçamento não encontrado.');
+
+    const titulo = str(ctx.fields.title).trim() || `${full.quote.title} (cópia)`;
+    const emitenteId = Number(str(ctx.fields.supplier_id)) || full.quote.supplier_id || null;
+    const fonteItens = Number(str(ctx.fields.item_supplier_id)) || null;
+    const modo = str(ctx.fields.mode) === 'custo' ? 'custo' : 'preco';
+    const ajuste = num(ctx.fields.adjust_pct, 0);
+    const margem = num(ctx.fields.margin_pct, full.quote.margin_pct);
+    const servico = num(ctx.fields.service_pct, full.quote.service_pct);
+    const validade = num(ctx.fields.valid_days, full.quote.valid_days);
+    const copiarDespesas = bool(ctx.fields.copy_expenses);
+
+    const novoId = tx(() => {
+      const r = run(
+        `INSERT INTO quotes (code, project_id, client_id, supplier_id, title, location, status,
+          margin_pct, margin_mode, service_pct, service_code, service_description, rounding, valid_days,
+          observations, created_by, created_at)
+         VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?,?)`,
+        null, full.quote.project_id, full.quote.client_id, emitenteId, titulo, full.quote.location,
+        margem, full.quote.margin_mode, servico, full.quote.service_code, full.quote.service_description,
+        full.quote.rounding, validade, full.quote.observations, user.id, nowIso(),
+      );
+      const quoteId = r.lastId;
+      run('UPDATE quotes SET code = ? WHERE id = ?', `ORC-${String(quoteId).padStart(4, '0')}`, quoteId);
+
+      full.items.forEach((it, i) => {
+        let cost = it.unit_cost;
+        let supplierId = it.supplier_id;
+        let productId = it.product_id;
+
+        if (fonteItens) {
+          const alt = produtoDoFornecedor(it, fonteItens);
+          if (alt) {
+            cost = alt.unit_price;
+            supplierId = alt.supplier_id;
+            productId = alt.id;
+          }
+        }
+
+        let override = null;
+        if (modo === 'preco') {
+          const base = full.calc.lines[i]?.unit_price ?? 0;
+          override = round2(base * (1 + ajuste / 100));
+        }
+
+        const ir = run(
+          `INSERT INTO quote_items (quote_id, position, internal_code, description, qty, unit_cost,
+             price_override, product_id, supplier_id, unit, note)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          quoteId, i + 1, it.internal_code, it.description, it.qty, cost, override,
+          productId, supplierId, it.unit, it.note,
+        );
+
+        if (productId) {
+          const prod = getProduct(productId);
+          if (prod) {
+            run(
+              `INSERT INTO quote_item_offers (item_id, supplier_id, product_id, unit_cost, stock, brand)
+               VALUES (?,?,?,?,?,?)`,
+              ir.lastId, prod.supplier_id, prod.id, prod.unit_price, prod.stock, prod.brand,
+            );
+            for (const alt of matchingOffers(prod)) {
+              run(
+                `INSERT INTO quote_item_offers (item_id, supplier_id, product_id, unit_cost, stock, brand)
+                 VALUES (?,?,?,?,?,?)`,
+                ir.lastId, alt.supplier_id, alt.product_id, alt.unit_price, alt.stock, alt.brand,
+              );
+            }
+          }
+        }
+      });
+
+      if (copiarDespesas) {
+        for (const e of full.expenses) {
+          run(
+            'INSERT INTO quote_expenses (quote_id, description, kind, value, base, position) VALUES (?,?,?,?,?,?)',
+            quoteId, e.description, e.kind, e.value, e.base, e.position,
+          );
+        }
+      }
+      return quoteId;
+    });
+
+    touch(novoId);
+    audit(user.id, 'quote.clone', 'quotes', novoId, `origem ${id}`);
+    return redirect(`/orcamentos/${novoId}?msg=${encodeURIComponent('Orçamento clonado. Revise os preços e o fornecedor.')}`);
   });
 
   post('/orcamentos/:id/excluir', (ctx) => {
