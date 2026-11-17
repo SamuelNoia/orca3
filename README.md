@@ -98,7 +98,8 @@ bancários.
 ![Cinco layouts de orçamento](docs/layouts.svg)
 
 O layout é escolhido **no cadastro do fornecedor** e aplicado automaticamente quando
-ele assina a proposta. Cada um muda fonte, tamanho, cores, bordas e espaçamento:
+ele assina a proposta — tanto na **planilha** quanto no **PDF**. Cada um muda fonte,
+tamanho, cores, bordas e espaçamento:
 
 | Layout | Fonte | Perfil |
 |---|---|---|

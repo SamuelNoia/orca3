@@ -589,6 +589,10 @@ async function main() {
   const fonteGerada = (stylesLayout.match(/<name val="([^"]+)"/) || [])[1];
   ok('orcamento usa o layout do fornecedor emitente', fonteGerada === 'Verdana', `fonte=${fonteGerada}`);
 
+  const printLayout = await http.get(`/orcamentos/${orcId}/imprimir`);
+  ok('PDF/impressao tambem segue o layout do fornecedor',
+    printLayout.text.includes('Verdana'), 'fonte aplicada no CSS de impressao');
+
   section('Planilha modelo');
   const modelo = await http.get('/modelo-importacao.xlsx');
   ok('modelo .xlsx disponivel', modelo.status === 200 && modelo.buffer[0] === 0x50, `status=${modelo.status}`);

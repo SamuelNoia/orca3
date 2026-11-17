@@ -8,7 +8,7 @@ import {
 } from '../repo.js';
 import { buildQuoteWorkbook, buildComparisonWorkbook } from '../exporter.js';
 import { fmtMoney, fmtQty, fmtPct, unitPriceFor, round2, computeQuote } from '../calc.js';
-import { layoutInfo } from '../layouts.js';
+import { layoutInfo, printThemeCss, themeFor } from '../layouts.js';
 import {
   layout, esc, field, select, textarea, card, pageHeader, button, csrfField,
   badge, emptyState, flash, statusBadge,
@@ -973,6 +973,7 @@ export function registerQuoteRoutes() {
     const full = loadQuote(Number(ctx.params.id));
     if (!full) throw new HttpError(404, 'Orçamento não encontrado.');
     const { quote, items, calc, client, emitter } = full;
+    const tema = themeFor(emitter?.layout);
 
     const rows = items.map((it, i) => `<tr>
       <td class="center">${esc(it.internal_code || '')}</td>
@@ -990,6 +991,7 @@ export function registerQuoteRoutes() {
          <p class="small" style="margin:2px 0">4. Garantia dos materiais conforme fabricantes e 12 meses para os serviços.</p>`;
 
     return render(ctx, `Imprimir ${quote.title}`, `
+      ${printThemeCss(tema)}
       ${pageHeader({
         title: 'Pré-visualização da impressão',
         subtitle: 'No diálogo de impressão, escolha <strong>Salvar como PDF</strong> para gerar o arquivo. Para a planilha editável, use "Baixar XLSX".',

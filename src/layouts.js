@@ -178,3 +178,31 @@ export function layoutOptions() {
 export function layoutExampleLinks() {
   return LAYOUTS.map((l) => `<a href="/layout-exemplo/${l.id}.xlsx">${l.name}</a>`).join(' · ');
 }
+
+/** CSS que faz a tela de impressao/PDF seguir o mesmo layout da planilha. */
+export function printThemeCss(theme) {
+  const t = theme || themeFor(LAYOUT_PADRAO);
+  const px = (pt) => Math.round(Number(pt) * 1.33);
+  const align = t.headerAlign === 'center' ? 'center' : 'left';
+  const pad = Math.max(3, Math.round(px(t.rowH) / 3.2));
+
+  return `<style>
+  .print-sheet { font-family: "${t.font}", Arial, sans-serif; font-size: ${px(t.szBody)}px; }
+  .print-sheet h1 {
+    background: #${t.primary}; color: #${t.titleText};
+    font-size: ${px(t.szTitle)}px; text-align: ${t.titleAlign === 'left' ? 'left' : 'center'};
+    padding: ${Math.round(px(t.titleH) / 4)}px 10px; margin-bottom: 16px;
+  }
+  .print-sheet thead th {
+    background: #${t.headerFill}; color: #${t.headerText};
+    font-size: ${px(t.szHeader)}px; text-align: ${align};
+    border: 0; border-bottom: 1px solid #${t.borderColor};
+  }
+  .print-sheet td, .print-sheet th {
+    border-bottom: 1px solid #${t.borderColor}; padding: ${pad}px 8px;
+  }
+  .print-sheet tfoot td { background: #${t.soft}; color: #${t.text}; }
+  .print-sheet tfoot tr.total td { font-size: ${px(t.szTotal)}px; font-weight: 700; }
+  .print-sheet h3 { color: #${t.sectionText}; }
+  </style>`;
+}
