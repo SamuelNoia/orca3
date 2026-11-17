@@ -88,17 +88,26 @@ O painel calcula em tempo real: custo, produtos, serviços, despesas, total,
 
 ### Projeto: vencedor e perdedores
 
+**Cada orçamento é a proposta de uma empresa participante.** O cabeçalho, o CNPJ, o
+endereço, os dados bancários e o layout vêm do cadastro dessa empresa — todas emitem
+a sua proposta e todas vão para o cliente.
+
 A tela do projeto é o centro do trabalho:
 
 - o **vencedor** aparece em destaque, com total e ações;
 - os **perdedores** ficam listados com o aumento aplicado a cada um;
-- **Adicionar perdedor** pede só título, fornecedor e o aumento em % — o resto é
-  herdado do vencedor;
+- **Adicionar perdedor** pede só o título, a **empresa participante** e o aumento em
+  % — o resto é herdado do vencedor;
 - o primeiro orçamento criado no projeto vira **vencedor automaticamente**;
+- a empresa participante pode ser trocada a qualquer momento no orçamento em
+  rascunho, em *Dados da proposta*;
 - **PDF de todas as propostas** gera um documento único, com quebra de página entre
   elas;
 - **Baixar planilhas (.zip)** entrega um `.xlsx` por proposta, nomeados em ordem,
   com o vencedor identificado.
+
+Ao escolher a empresa participante, o nome sugerido no título acompanha a escolha —
+não é preciso digitar de novo.
 
 ### Documento do cliente
 
@@ -138,7 +147,7 @@ Para comparar antes de escolher, cada layout tem um **exemplo para download** em
 - usuários com perfil **administrador** e **usuário**;
 - clientes, fornecedores, produtos e projetos;
 - projetos agrupam vários orçamentos (ex.: as escolas de um mesmo edital);
-- configuração da empresa emitente, dados bancários, layouts e padrões de cálculo.
+- configuração da empresa principal, dados bancários, layouts e padrões de cálculo.
 
 ---
 

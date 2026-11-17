@@ -10,9 +10,10 @@ import { buildQuoteWorkbook, buildComparisonWorkbook } from '../exporter.js';
 import { fmtMoney, fmtQty, fmtPct, unitPriceFor, round2, computeQuote } from '../calc.js';
 import { layoutInfo } from '../layouts.js';
 import { quoteSheetHtml, printToolbar } from '../print.js';
+import { tituloBase } from '../clone.js';
 import {
   layout, esc, field, select, textarea, card, pageHeader, button, csrfField,
-  badge, emptyState, flash, statusBadge,
+  badge, emptyState, flash, statusBadge, scriptTituloParticipante,
 } from '../ui.js';
 
 function render(ctx, title, body, wide = false) {
@@ -217,7 +218,7 @@ export function registerQuoteRoutes() {
     const projectId = Number(ctx.url.searchParams.get('project') || 0) || null;
     const project = projectId ? getProject(projectId) : null;
     const clients = listClients().map((c) => ({ value: c.id, label: c.name }));
-    const suppliers = listSuppliers(true).map((s) => ({ value: s.id, label: `${s.name}${s.is_own ? ' (emitente)' : ''}` }));
+    const suppliers = listSuppliers(true).map((s) => ({ value: s.id, label: `${s.name}${s.is_own ? ' (principal)' : ''}` }));
     const own = ownSupplier();
 
     return render(ctx, 'Novo orçamento', `
@@ -230,7 +231,7 @@ export function registerQuoteRoutes() {
             ${field({ label: 'Título / unidade', name: 'title', required: true, placeholder: 'ex.: EMEB Bela Vista', hint: 'Aparece no nome da aba da planilha.' })}
             ${select({ label: 'Cliente', name: 'client_id', required: true, value: project?.client_id || '', options: [{ value: '', label: '— selecione —' }].concat(clients) })}
             ${field({ label: 'Local / projeto', name: 'location', placeholder: 'ex.: Redes, Elétrica e CFTV - EMEB BELA VISTA' })}
-            ${select({ label: 'Empresa emitente', name: 'supplier_id', value: own?.id || '', options: suppliers })}
+            ${select({ label: 'Empresa participante (quem assina)', name: 'supplier_id', value: own?.id || '', options: suppliers })}
             ${field({ label: 'Margem sobre o custo (%)', name: 'margin_pct', type: 'number', step: '0.01', value: setting('default_margin_pct') })}
             ${select({ label: 'Forma de cálculo', name: 'margin_mode', value: setting('default_margin_mode'), options: [{ value: 'markup', label: 'Acréscimo sobre o custo (markup)' }, { value: 'margin', label: 'Margem sobre o preço de venda' }] })}
             ${field({ label: 'Serviço de instalação (%)', name: 'service_pct', type: 'number', step: '0.01', value: setting('default_service_pct'), hint: 'Percentual sobre o total de produtos. Use 0 se não houver serviço.' })}
@@ -463,6 +464,13 @@ export function registerQuoteRoutes() {
             ${field({ label: 'Título / unidade', name: 'title', value: quote.title, required: true })}
             ${field({ label: 'Local / projeto', name: 'location', value: quote.location || '' })}
             ${select({ label: 'Cliente', name: 'client_id', value: quote.client_id, options: listClients().map((c) => ({ value: c.id, label: c.name })) })}
+            ${select({
+              label: 'Empresa participante (quem assina)',
+              name: 'supplier_id',
+              value: quote.supplier_id || '',
+              options: listSuppliers(true).map((s) => ({ value: s.id, label: `${s.name}${s.is_own ? ' (principal)' : ''}` })),
+              hint: 'Define os dados do cabeçalho e o layout desta proposta.',
+            })}
             ${select({ label: 'Projeto', name: 'project_id', value: quote.project_id || '', options: [{ value: '', label: '— sem projeto —' }].concat(listProjects().map((p) => ({ value: p.id, label: p.name }))) })}
             ${field({ label: 'Código do serviço', name: 'service_code', value: quote.service_code || 'SERV-01' })}
             ${field({ label: 'Descrição do serviço', name: 'service_description', value: quote.service_description || '', className: 'span2' })}
@@ -485,10 +493,11 @@ export function registerQuoteRoutes() {
     requireUser(ctx);
     const id = Number(ctx.params.id);
     run(
-      `UPDATE quotes SET title=?, location=?, client_id=?, project_id=?, service_code=?,
+      `UPDATE quotes SET title=?, location=?, client_id=?, project_id=?, supplier_id=?, service_code=?,
         service_description=?, observations=?, updated_at=? WHERE id=?`,
       str(ctx.fields.title), str(ctx.fields.location), Number(str(ctx.fields.client_id)) || null,
-      Number(str(ctx.fields.project_id)) || null, str(ctx.fields.service_code) || 'SERV-01',
+      Number(str(ctx.fields.project_id)) || null, Number(str(ctx.fields.supplier_id)) || null,
+      str(ctx.fields.service_code) || 'SERV-01',
       str(ctx.fields.service_description) || null, str(ctx.fields.observations) || null, nowIso(), id,
     );
     return redirect(`/orcamentos/${id}?msg=${encodeURIComponent('Dados atualizados.')}`);
@@ -682,12 +691,12 @@ export function registerQuoteRoutes() {
 
     const fornecedores = listSuppliers(true);
     const emitenteAtual = fornecedores.find((s) => s.id === full.quote.supplier_id);
-    const sugestaoTitulo = `${full.quote.title} — novo fornecedor`;
+    const sugestaoTitulo = `${tituloBase(full.quote.title)} — ${emitenteAtual?.name || 'Empresa'}`;
 
     return render(ctx, 'Clonar orçamento', `
       ${pageHeader({
-        title: 'Clonar para outro fornecedor',
-        subtitle: `Deriva um novo orçamento a partir de <strong>${esc(full.quote.title)}</strong> (${fmtMoney(full.calc.total)})`,
+        title: 'Clonar para outra empresa participante',
+        subtitle: `Cada orçamento é a proposta de uma empresa. O novo sai de <strong>${esc(full.quote.title)}</strong> (${fmtMoney(full.calc.total)}).`,
         back: { href: `/orcamentos/${id}`, label: full.quote.title },
       })}
       ${flash(ctx)}
@@ -697,12 +706,14 @@ export function registerQuoteRoutes() {
             <form method="post" action="/orcamentos/${id}/clonar">
               ${csrfField(ctx)}
               <div class="form-grid">
-                ${field({ label: 'Título do novo orçamento', name: 'title', value: sugestaoTitulo, required: true, className: 'span2' })}
+                ${field({ label: 'Título do novo orçamento', name: 'title', value: sugestaoTitulo, required: true, className: 'span2', attrs: 'data-titulo' })}
                 ${select({
-                  label: 'Empresa emitente (quem assina)',
+                  label: 'Empresa participante (quem assina)',
                   name: 'supplier_id',
                   value: full.quote.supplier_id || '',
-                  options: fornecedores.map((s) => ({ value: s.id, label: `${s.name}${s.is_own ? ' (emitente)' : ''}` })),
+                  options: fornecedores.map((s) => ({ value: s.id, label: `${s.name}${s.is_own ? ' (principal)' : ''}` })),
+                  attrs: 'data-participante',
+                  hint: 'Os dados desta empresa (CNPJ, endereço, banco e layout) vão no cabeçalho da proposta.',
                 })}
                 ${select({
                   label: 'Fonte dos preços dos itens',
@@ -744,7 +755,7 @@ export function registerQuoteRoutes() {
               <div class="row"><span>Orçamento</span><span>${esc(full.quote.title)}</span></div>
               <div class="row"><span>Cliente</span><span>${esc(full.client?.name || '')}</span></div>
               <div class="row"><span>Projeto</span><span>${esc(full.project?.name || '—')}</span></div>
-              <div class="row"><span>Emitente</span><span>${esc(emitenteAtual?.name || '—')}</span></div>
+              <div class="row"><span>Empresa participante</span><span>${esc(emitenteAtual?.name || '—')}</span></div>
               <div class="row"><span>Itens</span><span>${full.items.length}</span></div>
               <div class="row"><span>Margem atual</span><span>${fmtPct(full.quote.margin_pct)}</span></div>
               <div class="row total"><span>Total atual</span><span>${fmtMoney(full.calc.total)}</span></div>
@@ -755,6 +766,7 @@ export function registerQuoteRoutes() {
           `)}
         </div>
       </div>
+      ${scriptTituloParticipante()}
     `, true);
   });
 

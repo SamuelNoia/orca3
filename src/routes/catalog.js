@@ -149,7 +149,7 @@ export function registerCatalogRoutes() {
     const suppliers = listSuppliers();
     const rows = suppliers.map((s) => `<tr>
       <td class="strong"><a href="/fornecedores/${s.id}">${esc(s.name)}</a>
-        ${s.is_own ? badge('emitente', 'info') : ''}${s.active ? '' : badge('inativo', 'bad')}</td>
+        ${s.is_own ? badge('principal', 'info') : ''}${s.active ? '' : badge('inativo', 'bad')}</td>
       <td class="mono small">${esc(s.cnpj || '—')}</td>
       <td class="center">${s.products_count}</td>
       <td class="small muted nowrap">${s.last_import ? esc(new Date(s.last_import).toLocaleDateString('pt-BR')) : 'nunca'}</td>
@@ -192,7 +192,7 @@ export function registerCatalogRoutes() {
             ${field({ label: 'Contato', name: 'contact', value: v.contact || '' })}
             ${field({ label: 'E-mail', name: 'email', type: 'email', value: v.email || '' })}
             ${field({ label: 'Telefone', name: 'phone', value: v.phone || '' })}
-            ${textarea({ label: 'Dados bancários / PIX', name: 'bank_info', value: v.bank_info || '', rows: 4, hint: 'Aparece no rodapé quando este fornecedor é o emitente da proposta.' })}
+            ${textarea({ label: 'Dados bancários / PIX', name: 'bank_info', value: v.bank_info || '', rows: 4, hint: 'Aparece no rodapé quando esta empresa assina a proposta.' })}
             ${select({
               label: 'Layout do orçamento',
               name: 'layout',
@@ -203,7 +203,7 @@ export function registerCatalogRoutes() {
           </div>
           <label class="field" style="flex-direction:row;align-items:center;gap:8px;margin-top:8px">
             <input type="checkbox" name="is_own" value="1" ${v.is_own ? 'checked' : ''}>
-            <span style="margin:0;font-weight:500">Esta é a empresa emitente (aparece como cabeçalho das propostas)</span>
+            <span style="margin:0;font-weight:500">Esta é a minha empresa (usada como padrão nas novas propostas)</span>
           </label>
           <div class="form-actions">
             ${button('Salvar', { kind: 'primary' })}
@@ -600,7 +600,7 @@ export function registerCatalogRoutes() {
     const isNew = !product;
     const fornecedores = listSuppliers(true).map((s) => ({
       value: s.id,
-      label: `${s.name}${s.is_own ? ' (emitente)' : ''}`,
+      label: `${s.name}${s.is_own ? ' (principal)' : ''}`,
     }));
 
     return render(ctx, isNew ? 'Novo produto' : 'Editar produto', `

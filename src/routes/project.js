@@ -6,12 +6,15 @@ import {
   getProject, projectQuotes, getClient, getSupplier, ownSupplier, listSuppliers,
   loadQuote, updateQuoteTotals,
 } from '../repo.js';
-import { clonarOrcamento } from '../clone.js';
+import { clonarOrcamento, tituloBase } from '../clone.js';
 import { buildQuoteWorkbook } from '../exporter.js';
 import { zipWrite } from '../xlsx.js';
 import { quoteSheetHtml, printToolbar } from '../print.js';
 import { fmtMoney, fmtPct } from '../calc.js';
-import { layout, esc, field, select, card, pageHeader, button, csrfField, badge, emptyState, flash, statusBadge } from '../ui.js';
+import {
+  layout, esc, field, select, card, pageHeader, button, csrfField, badge, emptyState,
+  flash, statusBadge, scriptTituloParticipante,
+} from '../ui.js';
 
 function render(ctx, title, body, wide = false) {
   return htmlPage(layout(ctx, { title, body, wide }));
@@ -116,24 +119,33 @@ export function registerProjectRoutes() {
 
     const tabelaPerdedores = perdedores.length
       ? `<div class="table-wrap"><table>
-          <thead><tr><th>Orçamento</th><th>Fornecedor</th><th class="center">Aumento</th><th class="num">Total</th><th></th></tr></thead>
+          <thead><tr><th>Orçamento</th><th>Empresa participante</th><th class="center">Aumento</th><th class="num">Total</th><th></th></tr></thead>
           <tbody>${linhasPerdedores}</tbody>
         </table></div>`
       : emptyState('Nenhum orçamento perdedor ainda. Use o formulário ao lado para criar os concorrentes.');
 
+    const participantePadrao = winner
+      ? (fornecedores.find((s) => s.id !== winner.supplier_id) || fornecedores[0] || null)
+      : null;
+    const sugestaoTitulo = winner
+      ? `${tituloBase(winner.title)} — ${participantePadrao?.name || 'Empresa'}`
+      : '';
+
     const formPerdedor = winner
       ? `<form method="post" action="/projetos/${project.id}/perdedor">
           ${csrfField(ctx)}
-          ${field({ label: 'Título', name: 'title', required: true, placeholder: 'ex.: Proposta Fornecedor B' })}
+          ${field({ label: 'Título', name: 'title', value: sugestaoTitulo, required: true, attrs: 'data-titulo' })}
           ${select({
-            label: 'Fornecedor que assina',
+            label: 'Empresa participante (quem assina)',
             name: 'supplier_id',
-            value: winner.supplier_id || '',
-            options: fornecedores.map((s) => ({ value: s.id, label: s.name })),
+            value: participantePadrao?.id || winner.supplier_id || '',
+            options: fornecedores.map((s) => ({ value: s.id, label: `${s.name}${s.is_own ? ' (principal)' : ''}` })),
+            attrs: 'data-participante',
+            hint: 'Os dados desta empresa vão no cabeçalho desta proposta.',
           })}
           ${field({ label: 'Aumento sobre o vencedor (%)', name: 'adjust_pct', type: 'number', step: '0.1', value: sugestaoAumento, hint: `Base: ${fmtMoney(winner.total_cache)}. Use 0 para repetir o valor.` })}
           <div class="form-actions">${button('Criar perdedor', { kind: 'primary' })}</div>
-        </form>`
+        </form>${scriptTituloParticipante()}`
       : `<p class="muted">Defina o vencedor primeiro — os perdedores são criados a partir dele.</p>`;
 
     // ------- documentos
@@ -162,6 +174,10 @@ export function registerProjectRoutes() {
           : `<a class="btn primary" href="/orcamentos/novo?project=${project.id}">Criar orçamento</a>`,
       })}
       ${flash(ctx)}
+      <p class="small muted" style="margin:-8px 0 16px">
+        Cada orçamento abaixo é a proposta de uma <strong>empresa participante</strong>.
+        O vencedor é o mais barato; os demais são os concorrentes apresentados ao cliente.
+      </p>
       <div class="grid-2">
         <div>
           ${cartaoVencedor}

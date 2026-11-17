@@ -108,10 +108,10 @@ export function card(title, body, opts = {}) {
 </section>`;
 }
 
-export function field({ label, name, value = '', type = 'text', required = false, placeholder = '', hint = '', step = null, min = null, max = null, className = '', autofocus = false }) {
+export function field({ label, name, value = '', type = 'text', required = false, placeholder = '', hint = '', step = null, min = null, max = null, className = '', autofocus = false, attrs = '' }) {
   return `<label class="field ${className}">
   <span>${esc(label)}${required ? ' <b class="req">*</b>' : ''}</span>
-  <input type="${type}" name="${esc(name)}" value="${esc(value)}"${required ? ' required' : ''}${placeholder ? ` placeholder="${esc(placeholder)}"` : ''}${step !== null ? ` step="${step}"` : ''}${min !== null ? ` min="${min}"` : ''}${max !== null ? ` max="${max}"` : ''}${autofocus ? ' autofocus' : ''}>
+  <input type="${type}" name="${esc(name)}" value="${esc(value)}"${required ? ' required' : ''}${placeholder ? ` placeholder="${esc(placeholder)}"` : ''}${step !== null ? ` step="${step}"` : ''}${min !== null ? ` min="${min}"` : ''}${max !== null ? ` max="${max}"` : ''}${autofocus ? ' autofocus' : ''}${attrs ? ` ${attrs}` : ''}>
   ${hint ? `<small>${hint}</small>` : ''}
 </label>`;
 }
@@ -124,7 +124,7 @@ export function textarea({ label, name, value = '', rows = 3, hint = '', placeho
 </label>`;
 }
 
-export function select({ label, name, value, options, hint = '', required = false }) {
+export function select({ label, name, value, options, hint = '', required = false, attrs = '' }) {
   const opts = options.map((o) => {
     const v = typeof o === 'object' ? o.value : o;
     const l = typeof o === 'object' ? o.label : o;
@@ -132,7 +132,7 @@ export function select({ label, name, value, options, hint = '', required = fals
   }).join('');
   return `<label class="field">
   <span>${esc(label)}${required ? ' <b class="req">*</b>' : ''}</span>
-  <select name="${esc(name)}"${required ? ' required' : ''}>${opts}</select>
+  <select name="${esc(name)}"${required ? ' required' : ''}${attrs ? ` ${attrs}` : ''}>${opts}</select>
   ${hint ? `<small>${hint}</small>` : ''}
 </label>`;
 }
@@ -176,4 +176,27 @@ export function button(label, { kind = 'primary', type = 'submit', href = null, 
 
 export function form(method, action, body, opts = {}) {
   return `<form method="${method}" action="${esc(action)}"${opts.multipart ? ' enctype="multipart/form-data"' : ''}${opts.className ? ` class="${opts.className}"` : ''}>${body}</form>`;
+}
+
+/**
+ * Atualiza o titulo da proposta quando a empresa participante muda no select.
+ * So age enquanto o titulo estiver com o valor sugerido (nao sobrescreve edicao manual).
+ */
+export function scriptTituloParticipante() {
+  return `<script>
+(function () {
+  var sel = document.querySelector('[data-participante]');
+  var tit = document.querySelector('[data-titulo]');
+  if (!sel || !tit) return;
+  var auto = tit.value;
+  sel.addEventListener('change', function () {
+    if (tit.value !== auto) return;
+    var nome = (sel.options[sel.selectedIndex].text || '').replace(/\\s*\\((principal|emitente)\\)\\s*$/i, '').trim();
+    var partes = tit.value.split(' — ');
+    partes[partes.length - 1] = nome;
+    tit.value = partes.join(' — ');
+    auto = tit.value;
+  });
+})();
+</script>`;
 }

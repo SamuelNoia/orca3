@@ -19,6 +19,20 @@ export function produtoDoFornecedor(item, supplierId) {
   );
 }
 
+/** Tira sufixos deixados por clonagens para o titulo nao acumular "— novo fornecedor". */
+export function tituloBase(titulo) {
+  let base = String(titulo || '').trim();
+  for (;;) {
+    const antes = base;
+    base = base
+      .replace(/\s*[—–-]\s*novo fornecedor$/i, '')
+      .replace(/\s*\(cópia\)$/i, '')
+      .trim();
+    if (base === antes) break;
+  }
+  return base || 'Proposta';
+}
+
 /**
  * Cria um novo orcamento a partir de outro.
  * mode 'preco': preco de venda = preco do original * (1 + adjustPct/100)

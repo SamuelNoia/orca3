@@ -378,7 +378,7 @@ async function main() {
   });
   ok('usuario comum criado', u.status === 303);
   const config = await http.get('/configuracoes');
-  ok('configuracoes abre', config.status === 200 && config.text.includes('Empresa emitente'));
+  ok('configuracoes abre', config.status === 200 && config.text.includes('Empresa principal'));
   const salvarConfig = await http.post('/configuracoes', {
     _csrf: tokenOf(config.text),
     app_name: 'Central de Orcamentos',
@@ -531,7 +531,13 @@ async function main() {
   section('Clonar orcamento para outro fornecedor');
   const formClone = await http.get(`/orcamentos/${orcId}/clonar`);
   ok('formulario de clonagem abre',
-    formClone.status === 200 && formClone.text.includes('Clonar para outro fornecedor'));
+    formClone.status === 200 && formClone.text.includes('Clonar para outra empresa participante'));
+  ok('rotulo fala em empresa participante',
+    formClone.text.includes('Empresa participante (quem assina)'));
+  ok('sugere titulo com o nome da empresa', /value="EMEB Bela Vista — [^"]+"/.test(formClone.text));
+  ok('nao usa mais o rotulo emitente no formulario', !formClone.text.includes('Empresa emitente'));
+  ok('liga titulo ao seletor de empresa',
+    formClone.text.includes('data-participante') && formClone.text.includes('data-titulo'));
 
   const clone = await http.post(`/orcamentos/${orcId}/clonar`, {
     _csrf: tokenOf(formClone.text),
@@ -568,6 +574,10 @@ async function main() {
 
   const clonePage = await http.get(`/orcamentos/${cloneId}`);
   ok('clone abre para edicao', clonePage.status === 200 && clonePage.text.includes('EMEB Bela Vista - Beta'));
+
+  const formClone2 = await http.get(`/orcamentos/${cloneId}/clonar`);
+  ok('titulo nao acumula sufixo ao clonar de novo',
+    !formClone2.text.includes('— novo fornecedor —') && !formClone2.text.includes('— novo fornecedor"'));
 
   section('Layouts do orcamento');
   const formForn = await http.get(`/fornecedores/${idAlfa}/editar`);
@@ -609,6 +619,48 @@ async function main() {
   const printLayout = await http.get(`/orcamentos/${orcId}/imprimir`);
   ok('PDF/impressao tambem segue o layout do fornecedor',
     printLayout.text.includes('Verdana'), 'fonte aplicada no CSS de impressao');
+
+  section('Trocar a empresa participante de um rascunho');
+  const dbC = new DatabaseSync(DB_PATH, { readOnly: true });
+  const baseQuote = dbC.prepare(
+    'SELECT title, location, client_id, project_id, service_code, service_description, observations, supplier_id FROM quotes WHERE id = ?',
+  ).get(orcId);
+  dbC.close();
+
+  const edPart = await http.get(`/orcamentos/${orcId}`);
+  ok('editor mostra o seletor de empresa participante',
+    edPart.text.includes('Empresa participante (quem assina)'));
+
+  const trocaIda = await http.post(`/orcamentos/${orcId}/cabecalho`, {
+    _csrf: tokenOf(edPart.text),
+    title: baseQuote.title,
+    location: baseQuote.location || '',
+    client_id: String(baseQuote.client_id),
+    project_id: String(baseQuote.project_id),
+    supplier_id: String(betaId),
+    service_code: baseQuote.service_code || 'SERV-01',
+    service_description: baseQuote.service_description || '',
+    observations: baseQuote.observations || '',
+  });
+  ok('troca de empresa participante salva', trocaIda.status === 303);
+
+  const dbC2 = new DatabaseSync(DB_PATH, { readOnly: true });
+  const aposTroca = dbC2.prepare('SELECT supplier_id FROM quotes WHERE id = ?').get(orcId);
+  dbC2.close();
+  ok('empresa do orcamento atualizada', aposTroca.supplier_id === betaId, `supplier=${aposTroca.supplier_id}`);
+
+  // devolve ao fornecedor original para nao afetar os testes seguintes
+  await http.post(`/orcamentos/${orcId}/cabecalho`, {
+    _csrf: tokenOf(edPart.text),
+    title: baseQuote.title,
+    location: baseQuote.location || '',
+    client_id: String(baseQuote.client_id),
+    project_id: String(baseQuote.project_id),
+    supplier_id: String(baseQuote.supplier_id),
+    service_code: baseQuote.service_code || 'SERV-01',
+    service_description: baseQuote.service_description || '',
+    observations: baseQuote.observations || '',
+  });
 
   section('Projeto v2: vencedor e perdedores');
   const hub = await http.get(`/projetos/${projId}`);

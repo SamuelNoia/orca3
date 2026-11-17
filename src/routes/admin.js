@@ -222,7 +222,7 @@ export function registerAdminRoutes() {
             ${field({ label: 'Nome exibido no sistema', name: 'app_name', value: setting('app_name'), required: true })}
           </div>
         `)}
-        ${card('Empresa emitente (dados que aparecem na proposta)', `
+        ${card('Empresa principal (padrão das novas propostas)', `
           <div class="form-grid">
             ${field({ label: 'Razão social', name: 'legal_name', value: company.legal_name || '', required: true })}
             ${field({ label: 'Nome fantasia', name: 'name', value: company.name || '', required: true })}
@@ -252,7 +252,7 @@ export function registerAdminRoutes() {
         <div class="form-actions">${button('Salvar configurações', { kind: 'primary' })}</div>
       </form>`;
     return render(ctx, 'Configurações', `
-      ${pageHeader({ title: 'Configurações', subtitle: 'Empresa emitente, padrões de cálculo e identidade do sistema.' })}
+      ${pageHeader({ title: 'Configurações', subtitle: 'Empresa principal, padrões de cálculo e identidade do sistema.' })}
       ${flash(ctx)}
       ${body}
     `);
