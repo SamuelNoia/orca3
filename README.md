@@ -191,9 +191,54 @@ exibe a senha de acesso gerada. Rodar de novo atualiza a imagem **mantendo os da
 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
-### Sem Docker (Windows)
+### No Windows
 
-Baixe o projeto e dê duplo clique em **`iniciar.cmd`** (requer Node.js 22.5+).
+**Instalação automática.** Abra o PowerShell e cole a linha abaixo:
+
+```powershell
+iwr -UseBasicParsing https://raw.githubusercontent.com/SamuelNoia/orca3/main/instalar-windows.ps1 | iex
+```
+
+Quem preferir: baixe o projeto e dê duplo clique em **`INSTALAR.cmd`**.
+
+O instalador cuida de tudo:
+
+| Etapa | O que faz |
+|---|---|
+| 1 | verifica o **Node.js 22.5+** e instala pelo `winget` se faltar |
+| 2 | baixa a aplicação do GitHub |
+| 3 | copia só os arquivos do sistema para `%LOCALAPPDATA%\CentralOrcamentos` |
+| 4 | gera o `iniciar.cmd` já com a porta escolhida |
+| 5 | cria o banco com 1 produto de teste |
+| 6 | cria o atalho **Central de Orçamentos** na Área de Trabalho |
+| 7 | inicia o sistema e mostra a senha do primeiro acesso |
+
+Opções (para quem roda o `.ps1` direto):
+
+```powershell
+.\instalar-windows.ps1 -Porta 4000 -Pasta "D:\Orcamentos"
+```
+
+| Opção | Para que serve |
+|---|---|
+| `-Pasta` | onde instalar (padrão `%LOCALAPPDATA%\CentralOrcamentos`) |
+| `-Porta` | porta local (padrão `3088`) |
+| `-Origem` | instala de uma pasta local, sem baixar |
+| `-SemAtalho` | não cria o atalho |
+| `-NaoIniciar` | instala sem abrir o sistema |
+| `-SemPausa` | não espera Enter no fim |
+
+**Como usar depois:** duplo clique no atalho *Central de Orçamentos*. Abre uma
+janela preta (o servidor) e o navegador. Fechar a janela encerra o sistema.
+
+**Atualizar:** rode o instalador de novo. Ele troca o código e **preserva** a pasta
+`data` — seus orçamentos, clientes e fornecedores continuam lá.
+
+**Desinstalar:** apague a pasta de instalação. Antes, copie a subpasta `data` se
+quiser guardar o banco.
+
+**Requisitos:** Windows 10 ou 11, PowerShell 5.1 (já vem) e internet na instalação.
+Depois de instalado, funciona sem internet.
 
 ### Primeiro acesso
 
@@ -277,8 +322,10 @@ orca3/
 ├── server.js                 servidor HTTP
 ├── Dockerfile                imagem de produção
 ├── docker-compose.ghcr.yml   compose com a imagem publicada
-├── instalar.sh               instalação em um comando
 ├── iniciar.cmd               execução no Windows
+├── INSTALAR.cmd              instalador Windows (duplo clique)
+├── instalar-windows.ps1      instalador Windows (script)
+├── instalar.sh               instalação em um comando (Linux)
 ├── docs/                     imagens de apresentação
 ├── public/                   CSS e JS da interface
 ├── src/
