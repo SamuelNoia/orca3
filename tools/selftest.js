@@ -511,6 +511,23 @@ async function main() {
     printComSvc.text.includes('Serviço de instalação') && !printComSvc.text.includes('Serviço de instalação ('));
   ok('impressao sem percentual de reajuste', !/reajuste conforme percentual/i.test(printComSvc.text));
 
+  section('Documento de impressao limpo');
+  const tituloPdf = (/<title>([^<]*)<\/title>/.exec(printComSvc.text) || [])[1] || '';
+  ok('titulo do PDF e o do orcamento, sem nome da plataforma',
+    tituloPdf === 'EMEB Bela Vista', `titulo="${tituloPdf}"`);
+  ok('impressao sem barra de titulo/pre-visualizacao',
+    !printComSvc.text.includes('Pré-visualização') && !printComSvc.text.includes('page-head'));
+  ok('impressao sem menu lateral', !printComSvc.text.includes('class="sidebar"'));
+  ok('impressao sem rodape com link da plataforma',
+    !printComSvc.text.includes('127.0.0.1') && !/Central de Or[cç]amentos/.test(printComSvc.text));
+
+  const css = await http.get('/app.css');
+  const cssTexto = css.buffer.toString('utf8');
+  ok('CSS zera a margem da pagina (tira cabecalho/rodape do navegador)',
+    cssTexto.includes('@page { size: A4; margin: 0; }'));
+  ok('CSS esconde a barra de acoes na impressao',
+    cssTexto.includes('.print-toolbar { display: none !important; }'));
+
   section('Clonar orcamento para outro fornecedor');
   const formClone = await http.get(`/orcamentos/${orcId}/clonar`);
   ok('formulario de clonagem abre',
@@ -643,6 +660,8 @@ async function main() {
   const blocos = (printAll.text.match(/class="print-sheet"/g) || []).length;
   ok('traz todas as propostas na mesma pagina', blocos === perdedores.length + 1, `blocos=${blocos}`);
   ok('quebra pagina entre propostas', printAll.text.includes('page-break-after:always'));
+  ok('PDF conjunto sem cabecalho da plataforma',
+    !printAll.text.includes('Pré-visualização') && !printAll.text.includes('class="sidebar"'));
 
   section('Planilha modelo');
   const modelo = await http.get('/modelo-importacao.xlsx');

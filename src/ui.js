@@ -43,10 +43,11 @@ const NAV = [
   { href: '/configuracoes', label: 'Configurações', icon: 'config', adminOnly: true, match: (p) => p.startsWith('/configuracoes') },
 ];
 
-export function layout(ctx, { title, body, wide = false, bare = false }) {
+export function layout(ctx, { title, docTitle = null, body, wide = false, bare = false }) {
   const user = ctx.user;
   const path = ctx.url.pathname;
   const appName = setting('app_name', 'Central de Orçamentos');
+  const tituloDocumento = docTitle !== null ? docTitle : `${title} · ${appName}`;
   const nav = NAV
     .filter((n) => !n.adminOnly || user?.role === 'admin')
     .map((n) => `<a href="${n.href}" class="nav-item${n.match(path) ? ' active' : ''}">${icon(n.icon)}<span>${esc(n.label)}</span></a>`)
@@ -57,7 +58,7 @@ export function layout(ctx, { title, body, wide = false, bare = false }) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)} · ${esc(appName)}</title>
+<title>${esc(tituloDocumento)}</title>
 <link rel="stylesheet" href="/app.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='5' fill='%231F4E78'/><path d='M6 18V9h3v9zM11 18V6h3v12zM16 18v-5h3v5z' fill='white'/></svg>">
 </head>

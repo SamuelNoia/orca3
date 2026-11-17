@@ -9,7 +9,7 @@ import {
 import { buildQuoteWorkbook, buildComparisonWorkbook } from '../exporter.js';
 import { fmtMoney, fmtQty, fmtPct, unitPriceFor, round2, computeQuote } from '../calc.js';
 import { layoutInfo } from '../layouts.js';
-import { quoteSheetHtml } from '../print.js';
+import { quoteSheetHtml, printToolbar } from '../print.js';
 import {
   layout, esc, field, select, textarea, card, pageHeader, button, csrfField,
   badge, emptyState, flash, statusBadge,
@@ -946,15 +946,26 @@ export function registerQuoteRoutes() {
     const full = loadQuote(Number(ctx.params.id));
     if (!full) throw new HttpError(404, 'Orçamento não encontrado.');
 
-    return render(ctx, `Imprimir ${full.quote.title}`, `
-      ${pageHeader({
-        title: 'Pré-visualização da impressão',
-        subtitle: 'No diálogo de impressão, escolha <strong>Salvar como PDF</strong>. Para a planilha editável, use "Baixar XLSX".',
-        back: { href: `/orcamentos/${full.quote.id}`, label: full.quote.title },
-        actions: `<button class="btn primary" onclick="window.print()">Salvar como PDF</button>
-                  <a class="btn" href="/orcamentos/${full.quote.id}/exportar.xlsx">Baixar XLSX</a>`,
-      })}
-      ${quoteSheetHtml({ quote: full.quote, items: full.items, calc: full.calc, client: full.client, emitter: full.emitter })}
-    `);
+    const body = printToolbar({
+      title: full.quote.title,
+      back: { href: `/orcamentos/${full.quote.id}`, label: 'Voltar' },
+      actions: `<button class="btn primary" onclick="window.print()">Salvar como PDF</button>
+                <a class="btn" href="/orcamentos/${full.quote.id}/exportar.xlsx">Baixar XLSX</a>`,
+    }) + quoteSheetHtml({
+      quote: full.quote,
+      items: full.items,
+      calc: full.calc,
+      client: full.client,
+      emitter: full.emitter,
+    });
+
+    // pagina limpa: sem menu, sem titulo da plataforma, sem barra de acoes no papel
+    return htmlPage(layout(ctx, {
+      title: full.quote.title,
+      docTitle: full.quote.title,
+      body,
+      bare: true,
+      wide: true,
+    }));
   });
 }

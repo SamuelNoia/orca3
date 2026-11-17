@@ -9,7 +9,7 @@ import {
 import { clonarOrcamento } from '../clone.js';
 import { buildQuoteWorkbook } from '../exporter.js';
 import { zipWrite } from '../xlsx.js';
-import { quoteSheetHtml } from '../print.js';
+import { quoteSheetHtml, printToolbar } from '../print.js';
 import { fmtMoney, fmtPct } from '../calc.js';
 import { layout, esc, field, select, card, pageHeader, button, csrfField, badge, emptyState, flash, statusBadge } from '../ui.js';
 
@@ -274,17 +274,20 @@ export function registerProjectRoutes() {
       });
     }).join('\n');
 
-    return render(ctx, `Propostas — ${project.name}`, `
-      ${pageHeader({
-        title: 'Todas as propostas',
-        subtitle: `${ordem.length} documento(s). No diálogo de impressão escolha <strong>Salvar como PDF</strong> — sai um arquivo com todas as propostas em sequência.`,
-        back: { href: `/projetos/${project.id}`, label: project.name },
-        actions: `<button class="btn primary" onclick="window.print()">Salvar como PDF</button>
-                  <a class="btn" href="/projetos/${project.id}/planilhas.zip">Planilhas (.zip)</a>`,
-      })}
-      <div class="no-print small muted" style="margin-bottom:10px">Cliente: ${esc(client?.name || '')}</div>
-      ${blocos}
-    `, true);
+    const body = printToolbar({
+      title: project.name,
+      back: { href: `/projetos/${project.id}`, label: 'Voltar' },
+      actions: `<button class="btn primary" onclick="window.print()">Salvar como PDF</button>
+                <a class="btn" href="/projetos/${project.id}/planilhas.zip">Planilhas (.zip)</a>`,
+    }) + blocos;
+
+    return htmlPage(layout(ctx, {
+      title: project.name,
+      docTitle: project.name,
+      body,
+      bare: true,
+      wide: true,
+    }));
   });
 
   // ---------------------------------------------------------------- pacote de planilhas

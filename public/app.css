@@ -276,17 +276,36 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
 .print-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; font-size: 12px; margin-bottom: 16px; }
 .print-meta div strong { display: block; font-size: 11px; text-transform: uppercase; color: var(--ink-soft); letter-spacing: .04em; }
 
+/* barra de acoes das telas de impressao (nao sai no papel) */
+.print-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 8px;
+  box-shadow: var(--shadow);
+}
+.print-toolbar .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
 @media print {
-  .sidebar, .page-head .actions, .no-print, .flash-wrap { display: none !important; }
-  .content { margin: 0; padding: 0; max-width: none; }
+  .sidebar, .page-head, .page-head .actions, .no-print, .flash-wrap, .print-toolbar { display: none !important; }
+  .content { margin: 0 !important; padding: 0 !important; max-width: none !important; }
   body { background: #fff; }
-  .card, .print-sheet { border: 0; box-shadow: none; }
-  .page-head h1 { font-size: 15px; }
-  a { color: inherit; text-decoration: none; }
+  .card { border: 0; box-shadow: none; }
+
+  /* documento sai limpo: sem titulo da plataforma, sem url, sem data */
+  .print-sheet {
+    border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+    padding: 14mm 12mm !important; background: #fff !important;
+  }
+  .print-sheet:last-child { page-break-after: auto !important; }
+
   table { font-size: 10.5px; }
   thead { display: table-header-group; }
   tr { page-break-inside: avoid; }
+  a { color: inherit; text-decoration: none; }
 }
+
+/* margem zero tira o cabecalho/rodape automatico do navegador (data, titulo, URL) */
+@page { size: A4; margin: 0; }
 
 @media (max-width: 900px) {
   .sidebar { position: static; width: auto; inset: auto; }

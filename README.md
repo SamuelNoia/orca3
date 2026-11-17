@@ -110,7 +110,9 @@ A tela do projeto é o centro do trabalho:
 - margem e percentual de serviço **não aparecem** no documento.
 
 **PDF** em A4, pronto para enviar: cabeçalho, itens, totais, observações e dados
-bancários.
+bancários. A página sai **limpa** — sem menu, sem título da plataforma, sem data e
+sem URL. A margem da página é zerada no CSS, o que também elimina o cabeçalho e o
+rodapé automáticos do navegador.
 
 ### 5 layouts
 

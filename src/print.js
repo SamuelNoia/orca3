@@ -8,8 +8,22 @@ const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-export function quoteSheetHtml({ quote, items, calc, client, emitter, breakAfter = false, destaque = '' }) {
-  const t = themeFor(emitter?.layout);
+/** Barra de acoes que NAO sai na impressao. */
+export function printToolbar({ title = '', back = null, actions = '' }) {
+  return `<div class="no-print print-toolbar">
+    <div style="display:flex;align-items:center;gap:10px;min-width:0">
+      ${back ? `<a class="btn" href="${esc(back.href)}">← ${esc(back.label)}</a>` : ''}
+      <strong style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(title)}</strong>
+    </div>
+    <div class="actions">${actions}</div>
+  </div>
+  <p class="no-print small muted" style="margin:0 0 14px">
+    No diálogo de impressão escolha <strong>Salvar como PDF</strong>. Se aparecerem
+    cabeçalho ou rodapé do navegador, desmarque <strong>“Cabeçalhos e rodapés”</strong>.
+  </p>`;
+}
+
+export function quoteSheetHtml({ quote, items, calc, client, emitter, breakAfter = false, destaque = '' }) {  const t = themeFor(emitter?.layout);
   const px = (pt) => Math.round(Number(pt) * 1.33);
   const pad = Math.max(3, Math.round(px(t.rowH) / 3.2));
   const empresa = (emitter?.legal_name || emitter?.name || '').toUpperCase();
