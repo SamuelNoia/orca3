@@ -64,17 +64,22 @@ export function saveSupplier(id, data) {
 }
 
 // ---------------------------------------------------------------- produtos
-/**
- * Converte o que foi digitado numa consulta FTS5: todos os termos, por prefixo.
- * "CABO PP 2,5" -> "cabo"* AND "pp"* AND "2"* AND "5"*
- */
-function consultaFts(termo, supplierId) {
-  const tokens = String(termo || '')
+/** Quebra o texto digitado em termos, sem acento e em minusculas. */
+function termosDe(termo) {
+  return String(termo || '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(Boolean)
     .slice(0, 12);
+}
+
+/**
+ * Converte o que foi digitado numa consulta FTS5: todos os termos, por prefixo.
+ * "CABO PP 2,5" -> "cabo"* AND "pp"* AND "2"* AND "5"*
+ */
+function consultaFts(termo, supplierId) {
+  const tokens = termosDe(termo);
   if (!tokens.length) return null;
 
   const params = [tokens.map((t) => `"${t}"*`).join(' AND ')];
@@ -83,15 +88,32 @@ function consultaFts(termo, supplierId) {
   return { params, filtro };
 }
 
+// texto corrido do produto, para a busca por trecho (usada quando nao ha FTS5)
+const CAMPOS_BUSCA = `(p.description || ' ' || COALESCE(p.brand, '') || ' ' ||
+  COALESCE(p.internal_code, '') || ' ' || COALESCE(p.ean, '') || ' ' ||
+  COALESCE(p.reference, '') || ' ' || COALESCE(p.manufacturer_code, '') || ' ' ||
+  COALESCE(p.ncm, ''))`;
+
+/** Todos os termos precisam aparecer em algum campo (funciona sem FTS5). */
+function filtroTermos(termo) {
+  const lista = termosDe(termo);
+  if (!lista.length) return null;
+  return {
+    sql: lista.map(() => `${CAMPOS_BUSCA} LIKE ?`).join(' AND '),
+    params: lista.map((t) => `%${t}%`),
+  };
+}
+
 export function searchProducts({ q = '', supplierId = null, limit = 40, offset = 0 } = {}) {
   const termo = String(q || '').trim();
 
   // 1) indice invertido (entende termos separados, nao so o trecho exato)
+  let achados = [];
   if (termo && ftsDisponivel()) {
     const c = consultaFts(termo, supplierId);
     if (c) {
       try {
-        const achados = all(
+        achados = all(
           `SELECT p.*, s.name AS supplier_name
              FROM products_fts
              JOIN products p ON p.id = products_fts.rowid
@@ -101,19 +123,31 @@ export function searchProducts({ q = '', supplierId = null, limit = 40, offset =
             LIMIT ? OFFSET ?`,
           ...c.params, limit, offset,
         );
-        if (achados.length) return achados;
-      } catch { /* cai no LIKE */ }
+      } catch {
+        achados = [];
+      }
     }
   }
+  if (achados.length) return achados;
 
-  // 2) LIKE: trecho exato, usado como reserva
-  const term = `%${termo}%`;
-  const params = [term, term, term, term, term];
+  // 2) todos os termos em qualquer campo — nao depende do FTS5 existir
+  const f = filtroTermos(termo);
+  if (f) {
+    const params = [...f.params];
+    let sql = `SELECT p.*, s.name AS supplier_name
+                 FROM products p JOIN suppliers s ON s.id = p.supplier_id
+                WHERE p.active = 1 AND ${f.sql}`;
+    if (supplierId) { sql += ' AND p.supplier_id = ?'; params.push(supplierId); }
+    sql += ' ORDER BY p.description COLLATE NOCASE LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+    return all(sql, ...params);
+  }
+
+  // sem termo: lista o catalogo
+  const params = [];
   let sql = `SELECT p.*, s.name AS supplier_name
                FROM products p JOIN suppliers s ON s.id = p.supplier_id
-              WHERE p.active = 1
-                AND (p.description LIKE ? OR p.internal_code LIKE ? OR p.ean LIKE ?
-                     OR p.manufacturer_code LIKE ? OR p.reference LIKE ?)`;
+              WHERE p.active = 1`;
   if (supplierId) { sql += ' AND p.supplier_id = ?'; params.push(supplierId); }
   sql += ' ORDER BY p.description COLLATE NOCASE LIMIT ? OFFSET ?';
   params.push(limit, offset);
@@ -136,15 +170,20 @@ export function countProducts({ q = '', supplierId = null } = {}) {
         );
         const n = Number(row?.n || 0);
         if (n > 0) return n;
-      } catch { /* cai no LIKE */ }
+      } catch { /* cai na busca por termos */ }
     }
   }
 
-  const term = `%${termo}%`;
-  const params = [term, term, term, term, term];
-  let sql = `SELECT COUNT(*) AS n FROM products p WHERE p.active = 1
-              AND (p.description LIKE ? OR p.internal_code LIKE ? OR p.ean LIKE ?
-                   OR p.manufacturer_code LIKE ? OR p.reference LIKE ?)`;
+  const f = filtroTermos(termo);
+  if (f) {
+    const params = [...f.params];
+    let sql = `SELECT COUNT(*) AS n FROM products p WHERE p.active = 1 AND ${f.sql}`;
+    if (supplierId) { sql += ' AND p.supplier_id = ?'; params.push(supplierId); }
+    return Number(get(sql, ...params)?.n || 0);
+  }
+
+  const params = [];
+  let sql = 'SELECT COUNT(*) AS n FROM products p WHERE p.active = 1';
   if (supplierId) { sql += ' AND p.supplier_id = ?'; params.push(supplierId); }
   return Number(get(sql, ...params)?.n || 0);
 }

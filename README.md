@@ -66,8 +66,15 @@ manualmente, sem planilha.
 Digitar `cabo pp 2,5` encontra *CABO PP FLEXIVEL 2C 2,5 MM PRETO* mesmo com palavras
 no meio — não precisa ser um trecho exato. A busca ignora acentos e maiúsculas,
 aceita os termos em qualquer ordem e também procura em código, EAN, referência,
-código do fabricante e marca. Se o índice não achar nada, ela cai automaticamente
-na busca por trecho.
+código do fabricante e marca.
+
+**Enquanto você digita.** A partir da 3ª letra a lista já vai sendo filtrada, sem
+precisar clicar em Buscar — no catálogo e no *Adicionar produtos* do orçamento. O
+botão continua funcionando (e o Enter também).
+
+Se o SQLite da instalação não tiver o módulo FTS5, a busca usa a mesma regra de
+termos (todos precisam aparecer em algum campo), apenas sem o índice. Em
+*Configurações → Diagnóstico* dá para ver qual modo está em uso.
 
 **Ajustar preços em massa:** no catálogo, escolha o fornecedor e clique em
 **Ajustar preços**. Você informa se é acréscimo ou desconto e o percentual — o
@@ -380,6 +387,10 @@ Baixar backup*. O download gera uma cópia **consistente mesmo com o sistema em 
 atual é substituído — antes disso, uma cópia dele é salva em
 `data/backups/antes-restauracao-*.db`. Depois de restaurar você é desconectado e
 entra com um usuário do backup.
+
+A barra lateral mostra, acima do usuário, **o banco em uso e a versão do sistema**.
+Em *Configurações → Diagnóstico* aparecem a versão, o tamanho do banco, se o índice
+de busca está ativo e quantos produtos estão indexados.
 
 **Pela linha de comando** (com o container parado):
 

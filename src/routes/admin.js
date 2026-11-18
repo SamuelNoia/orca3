@@ -6,13 +6,13 @@ import {
   requireAdmin, requireUser, listUsers, getUser, countAdmins, createUser,
   hashPassword, passwordProblems,
 } from '../auth.js';
-import { get, run, all, setting, setSetting, nowIso, audit, db, openDb, closeDb } from '../db.js';
+import { get, run, all, setting, setSetting, nowIso, audit, db, openDb, closeDb, ftsDisponivel } from '../db.js';
 import { DB_FILE, TMP_DIR } from '../config.js';
 import { ownSupplier, saveSupplier } from '../repo.js';
 import { layoutOptions } from '../layouts.js';
 import {
   layout, esc, field, select, textarea, card, pageHeader, button, csrfField,
-  badge, emptyState, flash, statusBadge,
+  badge, emptyState, flash, statusBadge, APP_VERSION, DB_NOME,
 } from '../ui.js';
 
 function render(ctx, title, body) {
@@ -302,6 +302,18 @@ export function registerAdminRoutes() {
             </button>
           </div>
         </form>
+      `)}
+      ${card('Diagnóstico', `
+        <dl class="summary" style="max-width:520px">
+          <div class="row"><span>Versão do sistema</span><span>${esc(APP_VERSION)}</span></div>
+          <div class="row"><span>Banco de dados</span><span>${esc(DB_NOME)} (${tamanhoBanco()})</span></div>
+          <div class="row"><span>Busca em texto completo</span><span>${ftsDisponivel() ? 'índice ativo (FTS5)' : 'modo por termos (sem FTS5)'}</span></div>
+          <div class="row"><span>Produtos ativos</span><span>${get('SELECT COUNT(*) AS n FROM products WHERE active = 1')?.n || 0}</span></div>
+          <div class="row"><span>Produtos no índice</span><span>${ftsDisponivel() ? (get('SELECT COUNT(*) AS n FROM products_fts')?.n || 0) : '—'}</span></div>
+        </dl>
+        <p class="small muted" style="margin:14px 0 0">
+          O índice é rebuildado sozinho quando a quantidade não confere com a tabela de produtos.
+        </p>
       `)}`;
     return render(ctx, 'Configurações', `
       ${pageHeader({ title: 'Configurações', subtitle: 'Empresa principal, padrões de cálculo e identidade do sistema.' })}

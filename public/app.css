@@ -92,6 +92,24 @@ a:hover { text-decoration: underline; }
 .sidebar-foot button.link:hover { background: rgba(255, 255, 255, .12); color: #fff; }
 .sidebar-foot .i { width: 18px; height: 18px; }
 
+/* banco de dados e versao, acima do nome do usuario */
+.sidebar-info {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 10px; padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, .1);
+  font-size: 10.5px; color: #9fb6cd;
+}
+.sidebar-info span { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.sidebar-info .db { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-info .i { width: 12px; height: 12px; opacity: .85; }
+.sidebar-info .ver {
+  flex: none; padding: 1px 6px; border-radius: 6px;
+  background: rgba(255, 255, 255, .1); color: #dbe8f5; font-weight: 600;
+}
+
+/* enquanto a busca ao vivo consulta o servidor */
+.buscando { opacity: .45; transition: opacity .12s; }
+
 /* ---------------------------------------------------------------- conteudo */
 .content {
   margin-left: var(--sidebar);

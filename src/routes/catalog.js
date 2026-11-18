@@ -28,6 +28,42 @@ function render(ctx, title, body, wide = false) {
 
 const PAGE_SIZE = 50;
 
+/** Lista de produtos do catalogo (usada na pagina e na busca ao vivo). */
+function blocoListaProdutos(ctx, { products, q, fornecedor, total, page, pages }) {
+  const rows = products.map((p) => `<tr>
+      <td class="small mono">${esc(p.internal_code || '—')}</td>
+      <td>${esc(p.description)}<div class="small muted">${[p.brand, p.ean ? `EAN ${p.ean}` : null, p.reference ? `ref ${p.reference}` : null, p.ncm ? `NCM ${p.ncm}` : null].filter(Boolean).map(esc).join(' · ')}</div></td>
+      <td class="small">${esc(p.supplier_name)}</td>
+      <td class="num">${p.unit_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+      <td class="center small">${fmtQty(p.stock)}</td>
+      <td class="right nowrap">
+        <a class="btn sm" href="/produtos/${p.id}/editar">Editar</a>
+        <form class="inline-form" method="post" action="/produtos/${p.id}/excluir" data-confirm="Remover este produto do catálogo?">
+          ${csrfField(ctx)}<button class="btn sm danger">Excluir</button>
+        </form>
+      </td>
+    </tr>`).join('');
+
+  const contagem = `<p class="small muted" style="margin:0 0 12px">${total} produto(s) encontrado(s)</p>`;
+
+  if (!products.length) {
+    return contagem + emptyState(q
+      ? 'Nenhum produto encontrado para esta busca.'
+      : 'Nenhum produto no catálogo. Envie uma planilha em Fornecedores.');
+  }
+
+  const pager = pages > 1 ? `<div class="inline" style="justify-content:center;margin-top:16px">
+      ${Array.from({ length: Math.min(pages, 12) }, (_, i) => {
+        const n = i + 1;
+        return `<a class="btn sm${n === page ? ' primary' : ''}" href="/produtos?q=${encodeURIComponent(q)}&fornecedor=${fornecedor || ''}&page=${n}">${n}</a>`;
+      }).join('')}
+    </div>` : '';
+
+  return `${contagem}<div class="table-wrap"><table>
+      <thead><tr><th>Código</th><th>Descrição</th><th>Fornecedor</th><th class="num">Valor unit.</th><th class="center">Estoque</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table></div>${pager}`;
+}
+
 // ---------------------------------------------------------------- clientes
 export function registerCatalogRoutes() {
   routeGet('/clientes', (ctx) => {
@@ -546,34 +582,13 @@ export function registerCatalogRoutes() {
     const products = searchProducts({ q, supplierId: fornecedor, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE });
     const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-    const rows = products.map((p) => `<tr>
-      <td class="small mono">${esc(p.internal_code || '—')}</td>
-      <td>${esc(p.description)}<div class="small muted">${[p.brand, p.ean ? `EAN ${p.ean}` : null, p.reference ? `ref ${p.reference}` : null, p.ncm ? `NCM ${p.ncm}` : null].filter(Boolean).map(esc).join(' · ')}</div></td>
-      <td class="small">${esc(p.supplier_name)}</td>
-      <td class="num">${p.unit_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-      <td class="center small">${fmtQty(p.stock)}</td>
-      <td class="right nowrap">
-        <a class="btn sm" href="/produtos/${p.id}/editar">Editar</a>
-        <form class="inline-form" method="post" action="/produtos/${p.id}/excluir" data-confirm="Remover este produto do catálogo?">
-          ${csrfField(ctx)}<button class="btn sm danger">Excluir</button>
-        </form>
-      </td>
-    </tr>`).join('');
-
     const supplierOpts = [{ value: '', label: 'Todos os fornecedores' }]
       .concat(listSuppliers().map((s) => ({ value: s.id, label: s.name })));
-
-    const pager = pages > 1 ? `<div class="inline" style="justify-content:center;margin-top:16px">
-      ${Array.from({ length: Math.min(pages, 12) }, (_, i) => {
-        const n = i + 1;
-        return `<a class="btn sm${n === page ? ' primary' : ''}" href="/produtos?q=${encodeURIComponent(q)}&fornecedor=${fornecedor || ''}&page=${n}">${n}</a>`;
-      }).join('')}
-    </div>` : '';
 
     return render(ctx, 'Produtos', `
       ${pageHeader({
         title: 'Catálogo de produtos',
-        subtitle: `${total} produto(s) encontrado(s)`,
+        subtitle: 'Busca em texto completo por descrição, código, EAN, referência ou marca.',
         actions: `<a class="btn primary" href="/produtos/novo">Novo produto</a>
                   <a class="btn" href="/modelo-importacao.xlsx">Baixar planilha modelo</a>`,
       })}
@@ -581,7 +596,12 @@ export function registerCatalogRoutes() {
       ${card(null, `
         <form method="get" action="/produtos" class="inline" style="margin-bottom:16px">
           <label class="field" style="flex:2;min-width:220px"><span>Buscar por descrição, código, EAN ou referência</span>
-            <input type="search" name="q" value="${esc(q)}" placeholder="ex.: cabo, 6881, 789..."></label>
+            <input type="search" name="q" value="${esc(q)}" placeholder="ex.: cabo, 6881, 789..." autocomplete="off"
+                   data-busca-viva="/produtos/lista"
+                   data-busca-param="q"
+                   data-busca-alvo="#lista-produtos"
+                   data-busca-extra="fornecedor"
+                   data-busca-min="3"></label>
           <label class="field" style="flex:1;min-width:180px"><span>Fornecedor</span>
             <select name="fornecedor">${supplierOpts.map((o) => `<option value="${o.value}"${String(o.value) === String(fornecedor ?? '') ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
           ${button('Buscar', { kind: 'soft' })}
@@ -590,13 +610,27 @@ export function registerCatalogRoutes() {
             Ajustar preços
           </button>
         </form>
-        ${products.length
-          ? `<div class="table-wrap"><table>
-              <thead><tr><th>Código</th><th>Descrição</th><th>Fornecedor</th><th class="num">Valor unit.</th><th class="center">Estoque</th><th></th></tr></thead>
-              <tbody>${rows}</tbody></table></div>${pager}`
-          : emptyState(q ? 'Nenhum produto encontrado para esta busca.' : 'Nenhum produto no catálogo. Envie uma planilha em Fornecedores.')}
+        <div id="lista-produtos">${blocoListaProdutos(ctx, { products, q, fornecedor, total, page, pages })}</div>
       `, { flush: products.length > 0 })}
     `);
+  });
+
+  // busca ao vivo do catalogo: devolve so a lista
+  routeGet('/produtos/lista', (ctx) => {
+    requireUser(ctx);
+    const q = ctx.url.searchParams.get('q') || '';
+    const fornecedor = Number(ctx.url.searchParams.get('fornecedor') || 0) || null;
+
+    // a busca ao vivo so comeca com 3 letras (evita varrer o catalogo a cada tecla)
+    if (q.trim().length > 0 && q.trim().length < 3) {
+      return htmlPage('<p class="small muted" style="margin:10px 0 0">Continue digitando…</p>');
+    }
+
+    const page = Math.max(1, Number(ctx.url.searchParams.get('page') || 1));
+    const total = countProducts({ q, supplierId: fornecedor });
+    const products = searchProducts({ q, supplierId: fornecedor, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE });
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    return htmlPage(blocoListaProdutos(ctx, { products, q, fornecedor, total, page, pages }));
   });
 
   const produtoForm = (ctx, { product = null, values = {}, error = '' } = {}) => {

@@ -1,7 +1,23 @@
 // Componentes de interface: layout, formularios e tabelas.
+import fs from 'node:fs';
+import path from 'node:path';
 import { csrfToken } from './auth.js';
 import { fmtMoney, fmtQty } from './calc.js';
 import { setting } from './db.js';
+import { DB_FILE } from './config.js';
+
+// versao do sistema, lida do package.json uma unica vez
+export const APP_VERSION = (() => {
+  try {
+    const bruto = fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8');
+    return JSON.parse(bruto).version || '?';
+  } catch {
+    return '?';
+  }
+})();
+
+// nome do arquivo do banco em uso (aparece na barra lateral)
+export const DB_NOME = path.basename(DB_FILE || 'orcamentos.db');
 
 export function esc(value) {
   return String(value ?? '')
@@ -24,6 +40,7 @@ const ICONS = {
   usuario: 'M12 12a4 4 0 100-8 4 4 0 000 8zM5 21c0-3 3.1-5 7-5s7 2 7 5',
   config: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19 12a7 7 0 00-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 00-1.7-1L14.5 2h-4l-.4 2.6a7 7 0 00-1.7 1l-2.3-1-2 3.4L6 11a7 7 0 000 2l-2 1.5 2 3.4 2.3-1a7 7 0 001.7 1l.4 2.6h4l.4-2.6a7 7 0 001.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z',
   arquivo: 'M12 3v10m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2',
+  banco: 'M12 8c4.4 0 8-1.3 8-3s-3.6-3-8-3-8 1.3-8 3 3.6 3 8 3zM4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
   sair: 'M15 17l5-5-5-5M20 12H9M12 3H5v18h7',
 };
 
@@ -72,6 +89,10 @@ ${bare ? '' : `<aside class="sidebar">
   </div>
   <nav>${nav}</nav>
   <div class="sidebar-foot">
+    <div class="sidebar-info" title="Banco de dados e versão do sistema">
+      <span class="db">${icon('banco')} ${esc(DB_NOME)}</span>
+      <span class="ver">v${esc(APP_VERSION)}</span>
+    </div>
     <div class="who"><strong>${esc(user?.name || '')}</strong><small>${esc(user?.role === 'admin' ? 'Administrador' : 'Usuário')}</small></div>
     <form method="post" action="/logout">${csrfField(ctx)}<button class="link" title="Sair">${icon('sair')}</button></form>
   </div>

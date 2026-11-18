@@ -62,4 +62,75 @@
       }
     });
   });
+
+  // ---------------------------------------------------------------- busca ao vivo
+  // Enquanto digita, pede o pedaco da lista ao servidor e troca o conteudo.
+  // O formulario continua funcionando: sem JS, ou apertando Enter, a pagina recarrega.
+  document.querySelectorAll('[data-busca-viva]').forEach(function (input) {
+    var url = input.getAttribute('data-busca-viva');
+    var seletor = input.getAttribute('data-busca-alvo');
+    var alvo = seletor ? document.querySelector(seletor) : null;
+    if (!url || !alvo) return;
+
+    var parametro = input.getAttribute('data-busca-param') || 'q';
+    var extra = input.getAttribute('data-busca-extra'); // outro campo do form (ex.: fornecedor)
+    var minimo = parseInt(input.getAttribute('data-busca-min') || '3', 10);
+    var espera = parseInt(input.getAttribute('data-busca-espera') || '250', 10);
+
+    var timer = null;
+    var sequencia = 0;
+
+    function montarUrl(termo) {
+      var partes = [parametro + '=' + encodeURIComponent(termo)];
+      if (extra) {
+        var campo = input.form ? input.form.elements[extra] : null;
+        if (campo && campo.value) partes.push(extra + '=' + encodeURIComponent(campo.value));
+      }
+      return url + (url.indexOf('?') >= 0 ? '&' : '?') + partes.join('&');
+    }
+
+    function buscar() {
+      var termo = input.value.trim();
+
+      if (termo.length < minimo) {
+        alvo.innerHTML = termo.length
+          ? '<p class="small muted" style="margin:10px 0 0">Continue digitando…</p>'
+          : '';
+        return;
+      }
+
+      var meu = ++sequencia;
+      alvo.classList.add('buscando');
+
+      fetch(montarUrl(termo), {
+        headers: { 'X-Requested-With': 'fetch' },
+        credentials: 'same-origin',
+      })
+        .then(function (r) { return r.ok ? r.text() : null; })
+        .then(function (html) {
+          if (meu !== sequencia) return; // resposta antiga: descarta
+          alvo.classList.remove('buscando');
+          if (html !== null) alvo.innerHTML = html;
+        })
+        .catch(function () {
+          if (meu !== sequencia) return;
+          alvo.classList.remove('buscando');
+        });
+    }
+
+    input.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(buscar, espera);
+    });
+
+    // Ao trocar o fornecedor, refaz a busca com o filtro novo
+    if (extra && input.form) {
+      var campoExtra = input.form.elements[extra];
+      if (campoExtra) {
+        campoExtra.addEventListener('change', function () {
+          if (input.value.trim().length >= minimo) buscar();
+        });
+      }
+    }
+  });
 })();

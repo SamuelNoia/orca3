@@ -786,6 +786,34 @@ async function main() {
   ok('busca dentro do orcamento tambem acha',
     buscaNoOrcamento.text.includes('CABO PP 2C 2,5 MM'));
 
+  section('Busca ao vivo e identificacao na barra lateral');
+  const paginaLateral = await http.get('/orcamentos');
+  const versaoApp = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+  ok('barra lateral tem o bloco de identificacao', paginaLateral.text.includes('sidebar-info'));
+  ok('barra lateral mostra a versao do sistema', paginaLateral.text.includes(`v${versaoApp}`), versaoApp);
+  ok('barra lateral mostra o nome do banco', paginaLateral.text.includes('teste.db'));
+
+  const fragCatalogo = await http.get('/produtos/lista?q=cab');
+  ok('busca ao vivo do catalogo responde', fragCatalogo.status === 200);
+  ok('busca ao vivo devolve so o pedaco (sem html)', !fragCatalogo.text.toLowerCase().includes('<html'));
+  ok('busca ao vivo do catalogo acha o cabo', fragCatalogo.text.includes('CABO PP 2C 2,5 MM'));
+
+  const fragCurto = await http.get('/produtos/lista?q=ca');
+  ok('busca ao vivo pede ao menos 3 letras', fragCurto.text.includes('Continue digitando'));
+
+  const fragOrcamento = await http.get(`/orcamentos/${orcId}/busca?busca=cab`);
+  ok('busca ao vivo dentro do orcamento responde', fragOrcamento.status === 200);
+  ok('busca ao vivo dentro do orcamento acha o cabo', fragOrcamento.text.includes('CABO PP 2C 2,5 MM'));
+  ok('resultado traz o botao de adicionar', fragOrcamento.text.includes('name="product_id"'));
+
+  const fragMeio = await http.get('/produtos/lista?q=1234567');
+  ok('acha pedaco no meio do EAN (busca por termos)', fragMeio.text.includes('CABO PP 2C 2,5 MM'));
+
+  const formComBuscaViva = await http.get('/produtos');
+  ok('campo do catalogo tem busca ao vivo', formComBuscaViva.text.includes('data-busca-viva="/produtos/lista"'));
+  const editorComBuscaViva = await http.get(`/orcamentos/${orcId}`);
+  ok('campo do orcamento tem busca ao vivo', editorComBuscaViva.text.includes(`data-busca-viva="/orcamentos/${orcId}/busca"`));
+
   section('Ajuste de precos em massa no catalogo');
   const dbA = new DatabaseSync(DB_PATH, { readOnly: true });
   const antesA = dbA.prepare(

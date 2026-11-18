@@ -28,8 +28,7 @@ function touch(quoteId) {
 }
 
 /** Procura o mesmo item (EAN / cod. fabricante / referencia) no catalogo de outro fornecedor. */
-function produtoDoFornecedor(item, supplierId) {
-  const conds = [];
+function produtoDoFornecedor(item, supplierId) {  const conds = [];
   const params = [supplierId];
   if (item.ean) { conds.push('ean = ?'); params.push(item.ean); }
   if (item.manufacturer_code) { conds.push('manufacturer_code = ?'); params.push(item.manufacturer_code); }
@@ -41,6 +40,41 @@ function produtoDoFornecedor(item, supplierId) {
       ORDER BY unit_price ASC LIMIT 1`,
     ...params,
   );
+}
+
+// ---------------------------------------------------------------- busca de produtos
+/** Linhas da busca de produtos dentro do orçamento. */
+function linhasBuscaProdutos(ctx, quoteId, results) {
+  return results.map((p) => `<tr>
+      <td class="small mono">${esc(p.internal_code || '—')}</td>
+      <td class="small">${esc(p.description)}<div class="small muted">${esc(p.supplier_name)}${p.brand ? ` · ${esc(p.brand)}` : ''}${p.stock ? ` · est. ${brQty(p.stock)}` : ''}</div></td>
+      <td class="num small">${brNum(p.unit_price)}</td>
+      <td class="center" style="width:110px">
+        <form method="post" action="/orcamentos/${quoteId}/itens" class="inline" style="gap:6px">
+          ${csrfField(ctx)}
+          <input type="hidden" name="product_id" value="${p.id}">
+          <input type="text" name="qty" value="1" style="width:56px;padding:5px 6px;border:1px solid #cfdae9;border-radius:6px;text-align:center;font:inherit">
+          <button class="btn sm primary">+</button>
+        </form>
+      </td>
+    </tr>`).join('');
+}
+
+/** Bloco completo (resultados ou aviso) usado na pagina e na busca ao vivo. */
+function blocoBuscaProdutos(ctx, quoteId, results, busca) {
+  const termo = String(busca || '').trim();
+  if (results.length) {
+    return `<div class="search-results"><table>
+      <thead><tr><th>Código</th><th>Produto</th><th class="num">Custo</th><th class="center">Adicionar</th></tr></thead>
+      <tbody>${linhasBuscaProdutos(ctx, quoteId, results)}</tbody></table></div>`;
+  }
+  if (termo.length >= 3) {
+    return emptyState('Nada encontrado. Tente menos palavras ou outro termo.');
+  }
+  if (termo.length > 0) {
+    return '<p class="small muted" style="margin:10px 0 0">Continue digitando…</p>';
+  }
+  return '';
 }
 
 // ---------------------------------------------------------------- painel
@@ -294,6 +328,18 @@ export function registerQuoteRoutes() {
   });
 
   // ---------------------------------------------------------------- editor
+  // busca ao vivo: devolve so o pedaco da lista, usado enquanto digita
+  routeGet('/orcamentos/:id/busca', (ctx) => {
+    requireUser(ctx);
+    const id = Number(ctx.params.id);
+    if (!get('SELECT id FROM quotes WHERE id = ?', id)) {
+      throw new HttpError(404, 'Orçamento não encontrado.');
+    }
+    const busca = ctx.url.searchParams.get('busca') || '';
+    const results = busca.trim().length >= 3 ? searchProducts({ q: busca, limit: 12 }) : [];
+    return htmlPage(blocoBuscaProdutos(ctx, id, results, busca));
+  });
+
   routeGet('/orcamentos/:id', (ctx) => {
     requireUser(ctx);
     const full = loadQuote(Number(ctx.params.id));
@@ -337,20 +383,6 @@ export function registerQuoteRoutes() {
     }).join('');
 
     const deleteForms = items.map((it) => `<form id="del-${it.id}" method="post" action="/orcamentos/${quote.id}/itens/${it.id}/excluir" data-confirm="Remover este item?">${csrfField(ctx)}</form>`).join('');
-
-    const resultRows = results.map((p) => `<tr>
-      <td class="small mono">${esc(p.internal_code || '—')}</td>
-      <td class="small">${esc(p.description)}<div class="small muted">${esc(p.supplier_name)}${p.brand ? ` · ${esc(p.brand)}` : ''}${p.stock ? ` · est. ${brQty(p.stock)}` : ''}</div></td>
-      <td class="num small">${brNum(p.unit_price)}</td>
-      <td class="center" style="width:110px">
-        <form method="post" action="/orcamentos/${quote.id}/itens" class="inline" style="gap:6px">
-          ${csrfField(ctx)}
-          <input type="hidden" name="product_id" value="${p.id}">
-          <input type="text" name="qty" value="1" style="width:56px;padding:5px 6px;border:1px solid #cfdae9;border-radius:6px;text-align:center;font:inherit">
-          <button class="btn sm primary">+</button>
-        </form>
-      </td>
-    </tr>`).join('');
 
     const expenseRows = calc.expenseLines.map((e) => `<tr>
       <td class="small">${esc(e.description)}</td>
@@ -398,13 +430,15 @@ export function registerQuoteRoutes() {
           ${card('Adicionar produtos', `
             <form method="get" action="/orcamentos/${quote.id}" class="inline" style="margin-bottom:14px">
               <label class="field" style="flex:1;min-width:220px"><span>Buscar no catálogo (descrição, código, EAN)</span>
-                <input type="search" name="busca" value="${esc(busca)}" placeholder="ex.: cabo, eletrocalha, 6881" autofocus></label>
+                <input type="search" name="busca" value="${esc(busca)}" placeholder="ex.: cabo, eletrocalha, 6881"
+                       autofocus autocomplete="off"
+                       data-busca-viva="/orcamentos/${quote.id}/busca"
+                       data-busca-param="busca"
+                       data-busca-alvo="#resultados-busca"
+                       data-busca-min="3"></label>
               ${button('Buscar', { kind: 'soft' })}
             </form>
-            ${results.length ? `<div class="search-results"><table>
-              <thead><tr><th>Código</th><th>Produto</th><th class="num">Custo</th><th class="center">Adicionar</th></tr></thead>
-              <tbody>${resultRows}</tbody></table></div>`
-              : busca.trim().length >= 2 ? emptyState('Nada encontrado. Verifique se a planilha do fornecedor foi importada.') : ''}
+            <div id="resultados-busca">${blocoBuscaProdutos(ctx, quote.id, results, busca)}</div>
             <hr class="sep">
             <details>
               <summary class="small" style="cursor:pointer;font-weight:600">Adicionar item manual (fora do catálogo)</summary>
