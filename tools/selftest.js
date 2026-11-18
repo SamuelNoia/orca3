@@ -961,6 +961,66 @@ async function main() {
     _csrf: tokenOf(lr.text), email: 'admin@teste.local', password: 'senha12345', next: '/',
   });
   ok('login funciona com o banco restaurado', lgFinal.status === 303);
+
+  section('Excluir projeto');
+  const dbProj = new DatabaseSync(DB_PATH, { readOnly: true });
+  const clienteTeste = dbProj.prepare('SELECT id FROM clients LIMIT 1').get();
+  dbProj.close();
+
+  const listaProj = await hb.get('/projetos');
+  ok('lista de projetos tem acao de excluir', listaProj.text.includes('/excluir'));
+
+  const criarA = await hb.post('/projetos', {
+    _csrf: tokenOf(listaProj.text), name: 'PROJETO DESCARTE A', client_id: String(clienteTeste.id),
+  });
+  const idA = Number((/\/projetos\/(\d+)/.exec(String(criarA.location)) || [])[1] || 0);
+  ok('projeto A criado', idA > 0);
+
+  const paginaA = await hb.get(`/projetos/${idA}`);
+  ok('pagina do projeto tem botao excluir', paginaA.text.includes('Excluir projeto'));
+  ok('opcao de apagar tambem os orcamentos', paginaA.text.includes('apagar_orcamentos'));
+
+  const orcAresp = await hb.post('/orcamentos', {
+    _csrf: tokenOf(paginaA.text), title: 'Orcamento do projeto A', client_id: String(clienteTeste.id),
+    project_id: String(idA), margin_pct: '60', margin_mode: 'markup', service_pct: '0', valid_days: '15',
+  });
+  const orcA = Number((/\/orcamentos\/(\d+)/.exec(String(orcAresp.location)) || [])[1] || 0);
+  ok('orcamento criado no projeto A', orcA > 0);
+
+  const paginaA2 = await hb.get(`/projetos/${idA}`);
+  const excluirA = await hb.post(`/projetos/${idA}/excluir`, { _csrf: tokenOf(paginaA2.text) });
+  ok('excluir projeto mantendo orcamentos', excluirA.status === 303);
+
+  const dbProjA = new DatabaseSync(DB_PATH, { readOnly: true });
+  const projA = dbProjA.prepare('SELECT id FROM projects WHERE id = ?').get(idA);
+  const orcARow = dbProjA.prepare('SELECT project_id FROM quotes WHERE id = ?').get(orcA);
+  dbProjA.close();
+  ok('projeto A removido', !projA);
+  ok('orcamento mantido e sem projeto', orcARow && orcARow.project_id === null, String(orcARow?.project_id));
+
+  const listaProj2 = await hb.get('/projetos');
+  const criarB = await hb.post('/projetos', {
+    _csrf: tokenOf(listaProj2.text), name: 'PROJETO DESCARTE B', client_id: String(clienteTeste.id),
+  });
+  const idB = Number((/\/projetos\/(\d+)/.exec(String(criarB.location)) || [])[1] || 0);
+  const paginaB = await hb.get(`/projetos/${idB}`);
+  const orcBresp = await hb.post('/orcamentos', {
+    _csrf: tokenOf(paginaB.text), title: 'Orcamento do projeto B', client_id: String(clienteTeste.id),
+    project_id: String(idB), margin_pct: '60', margin_mode: 'markup', service_pct: '0', valid_days: '15',
+  });
+  const orcB = Number((/\/orcamentos\/(\d+)/.exec(String(orcBresp.location)) || [])[1] || 0);
+
+  const paginaB2 = await hb.get(`/projetos/${idB}`);
+  const excluirB = await hb.post(`/projetos/${idB}/excluir`, {
+    _csrf: tokenOf(paginaB2.text), apagar_orcamentos: '1',
+  });
+  ok('excluir projeto apagando orcamentos', excluirB.status === 303);
+
+  const dbProjB = new DatabaseSync(DB_PATH, { readOnly: true });
+  const projB = dbProjB.prepare('SELECT id FROM projects WHERE id = ?').get(idB);
+  const orcBRow = dbProjB.prepare('SELECT id FROM quotes WHERE id = ?').get(orcB);
+  dbProjB.close();
+  ok('projeto B e seu orcamento removidos', !projB && !orcBRow);
 }
 
 main()

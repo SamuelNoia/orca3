@@ -93,6 +93,10 @@ export function registerQuoteRoutes() {
       <td class="right nowrap">
         <a class="btn sm" href="/projetos/${p.id}">Abrir</a>
         <a class="btn sm" href="/projetos/${p.id}/planilhas.zip">Planilhas</a>
+        <form class="inline-form" method="post" action="/projetos/${p.id}/excluir">
+          ${csrfField(ctx)}<button class="btn sm danger"
+            data-confirm="Excluir o projeto &quot;${esc(p.name)}&quot;? Os orçamentos são mantidos.">Excluir</button>
+        </form>
       </td>
     </tr>`).join('');
 
@@ -156,11 +160,26 @@ export function registerQuoteRoutes() {
   });
 
   post('/projetos/:id/excluir', (ctx) => {
-    requireUser(ctx);
+    const user = requireUser(ctx);
     const id = Number(ctx.params.id);
-    run('UPDATE quotes SET project_id = NULL WHERE project_id = ?', id);
+    const projeto = getProject(id);
+    if (!projeto) throw new HttpError(404, 'Projeto não encontrado.');
+
+    const quantidade = Number(get('SELECT COUNT(*) AS n FROM quotes WHERE project_id = ?', id)?.n || 0);
+    const apagarOrcamentos = bool(ctx.fields.apagar_orcamentos);
+
+    if (apagarOrcamentos) {
+      run('DELETE FROM quotes WHERE project_id = ?', id);
+    } else {
+      run('UPDATE quotes SET project_id = NULL WHERE project_id = ?', id);
+    }
     run('DELETE FROM projects WHERE id = ?', id);
-    return redirect(`/projetos?msg=${encodeURIComponent('Projeto excluído. Os orçamentos foram mantidos.')}`);
+    audit(user.id, 'project.delete', 'projects', id, `${projeto.name} (${quantidade} orçamento(s))`);
+
+    const msg = apagarOrcamentos
+      ? `Projeto excluído com ${quantidade} orçamento(s).`
+      : `Projeto excluído. ${quantidade} orçamento(s) foram mantidos, sem projeto.`;
+    return redirect(`/projetos?msg=${encodeURIComponent(msg)}`);
   });
 
   // ---------------------------------------------------------------- lista

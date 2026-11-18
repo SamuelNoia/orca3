@@ -184,6 +184,25 @@ export function registerProjectRoutes() {
           ${cartaoVencedor}
           ${card(`Orçamentos perdedores (${perdedores.length})`, tabelaPerdedores, { flush: perdedores.length > 0 })}
           ${documentos}
+          ${card('Excluir projeto', `
+            <p class="small muted" style="margin-top:0">
+              Remove o projeto do sistema. Por padrão os <strong>${quotes.length} orçamento(s)</strong>
+              são mantidos — continuam na lista de orçamentos, apenas sem projeto.
+            </p>
+            <form method="post" action="/projetos/${project.id}/excluir">
+              ${csrfField(ctx)}
+              <label class="field" style="flex-direction:row;align-items:center;gap:8px">
+                <input type="checkbox" name="apagar_orcamentos" value="1">
+                <span style="margin:0;font-weight:500">Excluir também os ${quotes.length} orçamento(s)</span>
+              </label>
+              <div class="form-actions">
+                <button class="btn danger" type="submit"
+                        data-confirm="Excluir o projeto &quot;${esc(project.name)}&quot;?">
+                  Excluir projeto
+                </button>
+              </div>
+            </form>
+          `)}
         </div>
         <div>
           ${card('Adicionar perdedor', formPerdedor)}

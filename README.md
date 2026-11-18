@@ -110,7 +110,9 @@ A tela do projeto é o centro do trabalho:
 - **PDF de todas as propostas** gera um documento único, com quebra de página entre
   elas;
 - **Baixar planilhas (.zip)** entrega um `.xlsx` por proposta, nomeados em ordem,
-  com o vencedor identificado.
+  com o vencedor identificado;
+- **Excluir projeto** remove o projeto. Por padrão os orçamentos são **mantidos**
+  (ficam sem projeto); marcando a caixa, eles também são apagados.
 
 Ao escolher a empresa participante, o nome sugerido no título acompanha a escolha —
 não é preciso digitar de novo.

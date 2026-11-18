@@ -1,6 +1,6 @@
 {
   "name": "central-orcamentos",
-  "version": "2.5.1",
+  "version": "2.5.2",
   "description": "Plataforma de propostas: orcamento vencedor, concorrentes e documentos para o cliente",
   "type": "module",
   "private": true,
