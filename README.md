@@ -62,6 +62,13 @@ Campos reconhecidos: descrição, valor unitário, marca, estoque, código do fa
 código de barras (EAN), referência e NCM. Também dá para **criar e editar produto**
 manualmente, sem planilha.
 
+**Busca em texto completo.** O catálogo tem índice invertido (FTS5 do SQLite).
+Digitar `cabo pp 2,5` encontra *CABO PP FLEXIVEL 2C 2,5 MM PRETO* mesmo com palavras
+no meio — não precisa ser um trecho exato. A busca ignora acentos e maiúsculas,
+aceita os termos em qualquer ordem e também procura em código, EAN, referência,
+código do fabricante e marca. Se o índice não achar nada, ela cai automaticamente
+na busca por trecho.
+
 **Ajustar preços em massa:** no catálogo, escolha o fornecedor e clique em
 **Ajustar preços**. Você informa se é acréscimo ou desconto e o percentual — o
 sistema mostra quantos produtos serão afetados e a soma atual antes de aplicar.

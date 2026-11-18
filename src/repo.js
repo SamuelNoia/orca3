@@ -1,5 +1,5 @@
 // Consultas e montagem de dados usados pelas telas.
-import { all, get, run, nowIso } from './db.js';
+import { all, get, run, nowIso, ftsDisponivel } from './db.js';
 import { computeQuote } from './calc.js';
 
 // ---------------------------------------------------------------- clientes
@@ -64,8 +64,50 @@ export function saveSupplier(id, data) {
 }
 
 // ---------------------------------------------------------------- produtos
+/**
+ * Converte o que foi digitado numa consulta FTS5: todos os termos, por prefixo.
+ * "CABO PP 2,5" -> "cabo"* AND "pp"* AND "2"* AND "5"*
+ */
+function consultaFts(termo, supplierId) {
+  const tokens = String(termo || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .slice(0, 12);
+  if (!tokens.length) return null;
+
+  const params = [tokens.map((t) => `"${t}"*`).join(' AND ')];
+  let filtro = '';
+  if (supplierId) { filtro = ' AND p.supplier_id = ?'; params.push(supplierId); }
+  return { params, filtro };
+}
+
 export function searchProducts({ q = '', supplierId = null, limit = 40, offset = 0 } = {}) {
-  const term = `%${q.trim()}%`;
+  const termo = String(q || '').trim();
+
+  // 1) indice invertido (entende termos separados, nao so o trecho exato)
+  if (termo && ftsDisponivel()) {
+    const c = consultaFts(termo, supplierId);
+    if (c) {
+      try {
+        const achados = all(
+          `SELECT p.*, s.name AS supplier_name
+             FROM products_fts
+             JOIN products p ON p.id = products_fts.rowid
+             JOIN suppliers s ON s.id = p.supplier_id
+            WHERE products_fts MATCH ? AND p.active = 1${c.filtro}
+            ORDER BY bm25(products_fts), p.description COLLATE NOCASE
+            LIMIT ? OFFSET ?`,
+          ...c.params, limit, offset,
+        );
+        if (achados.length) return achados;
+      } catch { /* cai no LIKE */ }
+    }
+  }
+
+  // 2) LIKE: trecho exato, usado como reserva
+  const term = `%${termo}%`;
   const params = [term, term, term, term, term];
   let sql = `SELECT p.*, s.name AS supplier_name
                FROM products p JOIN suppliers s ON s.id = p.supplier_id
@@ -79,7 +121,26 @@ export function searchProducts({ q = '', supplierId = null, limit = 40, offset =
 }
 
 export function countProducts({ q = '', supplierId = null } = {}) {
-  const term = `%${q.trim()}%`;
+  const termo = String(q || '').trim();
+
+  if (termo && ftsDisponivel()) {
+    const c = consultaFts(termo, supplierId);
+    if (c) {
+      try {
+        const row = get(
+          `SELECT COUNT(*) AS n
+             FROM products_fts
+             JOIN products p ON p.id = products_fts.rowid
+            WHERE products_fts MATCH ? AND p.active = 1${c.filtro}`,
+          ...c.params,
+        );
+        const n = Number(row?.n || 0);
+        if (n > 0) return n;
+      } catch { /* cai no LIKE */ }
+    }
+  }
+
+  const term = `%${termo}%`;
   const params = [term, term, term, term, term];
   let sql = `SELECT COUNT(*) AS n FROM products p WHERE p.active = 1
               AND (p.description LIKE ? OR p.internal_code LIKE ? OR p.ean LIKE ?

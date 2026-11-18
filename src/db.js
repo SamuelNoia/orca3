@@ -215,6 +215,34 @@ CREATE INDEX IF NOT EXISTS ix_files_quote   ON quote_files(quote_id);
 CREATE INDEX IF NOT EXISTS ix_files_project ON quote_files(project_id);
 `;
 
+// Indice invertido para busca de produtos (FTS5). Fica separado porque nem toda
+// compilacao do SQLite traz o modulo FTS5 — se faltar, a busca cai no LIKE.
+const FTS_SCHEMA = `
+CREATE VIRTUAL TABLE IF NOT EXISTS products_fts USING fts5(
+  description, brand, internal_code, ean, manufacturer_code, reference, ncm,
+  content='products', content_rowid='id',
+  tokenize="unicode61 remove_diacritics 2"
+);
+
+CREATE TRIGGER IF NOT EXISTS products_fts_ai AFTER INSERT ON products BEGIN
+  INSERT INTO products_fts (rowid, description, brand, internal_code, ean, manufacturer_code, reference, ncm)
+  VALUES (new.id, new.description, new.brand, new.internal_code, new.ean, new.manufacturer_code, new.reference, new.ncm);
+END;
+
+CREATE TRIGGER IF NOT EXISTS products_fts_ad AFTER DELETE ON products BEGIN
+  INSERT INTO products_fts (products_fts, rowid, description, brand, internal_code, ean, manufacturer_code, reference, ncm)
+  VALUES ('delete', old.id, old.description, old.brand, old.internal_code, old.ean, old.manufacturer_code, old.reference, old.ncm);
+END;
+
+CREATE TRIGGER IF NOT EXISTS products_fts_au
+AFTER UPDATE OF description, brand, internal_code, ean, manufacturer_code, reference, ncm ON products BEGIN
+  INSERT INTO products_fts (products_fts, rowid, description, brand, internal_code, ean, manufacturer_code, reference, ncm)
+  VALUES ('delete', old.id, old.description, old.brand, old.internal_code, old.ean, old.manufacturer_code, old.reference, old.ncm);
+  INSERT INTO products_fts (rowid, description, brand, internal_code, ean, manufacturer_code, reference, ncm)
+  VALUES (new.id, new.description, new.brand, new.internal_code, new.ean, new.manufacturer_code, new.reference, new.ncm);
+END;
+`;
+
 export const DEFAULTS = {
   app_name: 'Central de Orcamentos',
   default_margin_pct: '60',
@@ -238,8 +266,32 @@ export function openDb(file) {
   database.exec(SCHEMA);
   _db = database;
   migrate();
+  iniciarBusca(database);
   seedDefaults();
   return database;
+}
+
+let _fts = false;
+
+/** true quando o indice invertido (FTS5) existe e esta em uso. */
+export function ftsDisponivel() {
+  return _fts;
+}
+
+/** Cria o indice invertido e mantem em sincronia com a tabela products. */
+function iniciarBusca(database) {
+  _fts = false;
+  try {
+    database.exec(FTS_SCHEMA);
+    const produtos = Number(database.prepare('SELECT COUNT(*) AS n FROM products').get()?.n || 0);
+    const indexados = Number(database.prepare('SELECT COUNT(*) AS n FROM products_fts').get()?.n || 0);
+    if (produtos !== indexados) {
+      database.exec("INSERT INTO products_fts(products_fts) VALUES('rebuild')");
+    }
+    _fts = true;
+  } catch {
+    _fts = false;
+  }
 }
 
 /** Ajustes de schema para bancos criados em versoes anteriores. */

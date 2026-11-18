@@ -767,6 +767,25 @@ async function main() {
   ok('preco importado corretamente (2.135,00)', prodsModelo.text.includes('2.135,00'), '');
   ok('estoque nao foi confundido com preco', !prodsModelo.text.includes('R$ 10,00'), '');
 
+  section('Busca em texto completo (indice invertido)');
+  const buscarProd = (q) => http.get(`/produtos?q=${encodeURIComponent(q)}`);
+  const achaCabo = async (q) => (await buscarProd(q)).text.includes('CABO PP 2C 2,5 MM');
+
+  ok('acha por termos separados: "CABO PP 2,5"', await achaCabo('CABO PP 2,5'));
+  ok('acha ignorando maiusculas: "cabo pp"', await achaCabo('cabo pp'));
+  ok('acha pela medida: "2,5 mm"', await achaCabo('2,5 mm'));
+  ok('acha por palavra unica: "eletroduto"', (await buscarProd('eletroduto')).text.includes('ELETRODUTO'));
+  ok('acha por codigo: "661"', await achaCabo('661'));
+  ok('acha por EAN', await achaCabo('7891234567891'));
+  ok('acha por referencia do fabricante', await achaCabo('REF661'));
+  ok('acha por marca', await achaCabo('sil'));
+  ok('termo inexistente nao retorna nada',
+    (await buscarProd('zzz nao existe')).text.includes('Nenhum produto encontrado'));
+
+  const buscaNoOrcamento = await http.get(`/orcamentos/${orcId}?busca=${encodeURIComponent('CABO PP 2,5')}`);
+  ok('busca dentro do orcamento tambem acha',
+    buscaNoOrcamento.text.includes('CABO PP 2C 2,5 MM'));
+
   section('Ajuste de precos em massa no catalogo');
   const dbA = new DatabaseSync(DB_PATH, { readOnly: true });
   const antesA = dbA.prepare(
