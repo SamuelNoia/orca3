@@ -2,11 +2,15 @@
 (function () {
   'use strict';
 
-  // Confirma acoes destrutivas
+  // Confirma acoes destrutivas.
+  // Só dispara quando o clique vem de um botao, link ou submit — se o elemento
+  // com data-confirm for um <form>, clicar num campo de texto nao deve abrir nada.
   document.addEventListener('click', function (ev) {
-    var el = ev.target.closest('[data-confirm]');
-    if (!el) return;
-    if (!window.confirm(el.getAttribute('data-confirm'))) {
+    var controle = ev.target.closest('button, a, input[type="submit"]');
+    if (!controle) return;
+    var alvo = controle.closest('[data-confirm]');
+    if (!alvo) return;
+    if (!window.confirm(alvo.getAttribute('data-confirm'))) {
       ev.preventDefault();
       ev.stopPropagation();
     }

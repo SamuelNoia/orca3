@@ -780,6 +780,11 @@ async function main() {
 
   const telaAjuste = await http.get(`/produtos/reajustar?fornecedor=${idAlfa}`);
   ok('tela de ajuste abre', telaAjuste.status === 200 && telaAjuste.text.includes('Ajustar preços do catálogo'));
+  ok('tela de ajuste sem popup de confirmacao', !telaAjuste.text.includes('data-confirm'));
+
+  const appJs = await http.get('/app.js');
+  ok('confirmacao so dispara em botoes/links',
+    appJs.buffer.toString('utf8').includes('closest(\'button, a, input[type="submit"]\')'));
   ok('tela mostra a situacao atual', telaAjuste.text.includes('Situação atual'));
   ok('botao Ajustar precos existe no catalogo',
     (await http.get('/produtos')).text.includes('/produtos/reajustar')

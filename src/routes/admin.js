@@ -288,8 +288,7 @@ export function registerAdminRoutes() {
           Envie um arquivo <code>.db</code> gerado por esta plataforma. O banco atual é
           <strong>substituído</strong> — uma cópia dele é salva antes, em <code>data/backups/</code>.
         </p>
-        <form method="post" action="/configuracoes/restaurar" enctype="multipart/form-data"
-              data-confirm="Substituir o banco atual pelo backup enviado?">
+        <form method="post" action="/configuracoes/restaurar" enctype="multipart/form-data">
           ${csrfField(ctx)}
           <label class="field">
             <span>Arquivo de backup (.db) <b class="req">*</b></span>
@@ -297,7 +296,10 @@ export function registerAdminRoutes() {
             <small>Você será desconectado e precisará entrar com um usuário do backup.</small>
           </label>
           <div class="form-actions">
-            <button class="btn danger" type="submit">Restaurar backup</button>
+            <button class="btn danger" type="submit"
+                    data-confirm="Substituir o banco atual pelo backup enviado? Uma cópia do banco atual será guardada antes.">
+              Restaurar backup
+            </button>
           </div>
         </form>
       `)}`;

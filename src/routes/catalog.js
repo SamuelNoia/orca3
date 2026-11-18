@@ -691,7 +691,7 @@ export function registerCatalogRoutes() {
       <div class="grid-2">
         <div>
           ${card(null, `
-            <form method="post" action="/produtos/reajustar" data-confirm="Aplicar o ajuste a todos os itens deste fornecedor?">
+            <form method="post" action="/produtos/reajustar">
               ${csrfField(ctx)}
               <input type="hidden" name="supplier_id" value="${supplierId}">
               <div class="form-grid">
