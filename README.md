@@ -217,7 +217,19 @@ curl -fsSL https://raw.githubusercontent.com/SamuelNoia/orca3/main/instalar.sh |
 ```
 
 O script baixa a imagem, cria a pasta de dados, sobe o container na porta **3088** e
-exibe a senha de acesso gerada. Rodar de novo atualiza a imagem **mantendo os dados**.
+exibe a senha de acesso gerada.
+
+**Atualizar depois:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SamuelNoia/orca3/main/atualizar.sh | sudo sh
+```
+
+O atualizador lê as opções do container atual (porta, volume, fuso), faz **backup do
+banco em `.tar.gz`**, baixa a imagem nova e recria o container com as mesmas
+configurações. Se já estiver na versão mais recente, avisa e não altera nada.
+
+Rodar o `instalar.sh` de novo também atualiza, mas ele recria com os valores padrão.
 
 ### Docker Compose
 
@@ -423,6 +435,7 @@ orca3/
 ├── DESINSTALAR.cmd           desinstalador Windows (duplo clique)
 ├── desinstalar-windows.ps1   desinstalador Windows (script)
 ├── instalar.sh               instalação em um comando (Linux)
+├── atualizar.sh              atualização em um comando (Linux)
 ├── docs/                     imagens de apresentação
 ├── public/                   CSS e JS da interface
 ├── src/
