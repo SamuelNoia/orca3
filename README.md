@@ -68,6 +68,12 @@ no meio — não precisa ser um trecho exato. A busca ignora acentos e maiúscul
 aceita os termos em qualquer ordem e também procura em código, EAN, referência,
 código do fabricante e marca.
 
+**Ordem por certeza.** Quando o que você digitou bate **exatamente** com o código,
+o EAN, o código do fabricante ou a referência, esse item vem em **primeiro lugar** —
+mesmo que a descrição dele fique depois no alfabeto. A ordem é: código exato →
+código começando com o termo → código contendo o termo → casou só pela descrição.
+Entre itens igualmente certeiros, ganha o que tem código cadastrado.
+
 **Enquanto você digita.** A partir da 3ª letra a lista já vai sendo filtrada, sem
 precisar clicar em Buscar — no catálogo e no *Adicionar produtos* do orçamento. O
 botão continua funcionando (e o Enter também).
@@ -504,7 +510,7 @@ orca3/
 node tools/selftest.js
 ```
 
-**264 verificações** de ponta a ponta, num banco temporário isolado: login e
+**269 verificações** de ponta a ponta, num banco temporário isolado: login e
 permissões, CSRF, cadastros, importação de dois layouts de planilha diferentes,
 planilha modelo (ida e volta), preço de venda manual, orçamento sem serviço, os
 5 layouts, clonagem com ajuste, projeto com vencedor e perdedores, PDF de todas as

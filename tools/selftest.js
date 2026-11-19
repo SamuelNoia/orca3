@@ -786,6 +786,46 @@ async function main() {
   ok('busca dentro do orcamento tambem acha',
     buscaNoOrcamento.text.includes('CABO PP 2C 2,5 MM'));
 
+  // ordem por "certeiro": codigo exato tem que vir antes de qualquer descricao
+  const dbOrd = new DatabaseSync(DB_PATH);
+  const fornOrd = dbOrd.prepare('SELECT id FROM suppliers LIMIT 1').get().id;
+  const agoraOrd = new Date().toISOString();
+  dbOrd.prepare(
+    `INSERT INTO products (supplier_id, internal_code, description, brand, unit, stock, unit_price,
+       ean, reference, manufacturer_code, ncm, active, updated_at)
+     VALUES (?, '9999', 'AAA PRODUTO QUE CONTEM 661 NA DESCRICAO', 'X', 'UN', 1, 10,
+       '7899999999999', 'REF9999', 'MFR9999', '85444900', 1, ?)`,
+  ).run(fornOrd, agoraOrd);
+
+  dbOrd.close();
+
+  const primeiroCodigo = (texto) => {
+    const ini = texto.indexOf('<tbody>');
+    const fim = texto.indexOf('</tbody>', ini);
+    const primeira = /<td class="small mono">([^<]*)<\/td>/.exec(texto.slice(ini, fim));
+    return primeira ? primeira[1].trim() : '';
+  };
+
+  const ordemCodigo = await buscarProd('661');
+  ok('codigo exato vem em primeiro lugar', primeiroCodigo(ordemCodigo.text) === '661',
+    `primeiro = ${primeiroCodigo(ordemCodigo.text)}`);
+
+  const ordemEan = await buscarProd('7891234567891');
+  ok('EAN exato vem em primeiro lugar', primeiroCodigo(ordemEan.text) === '661',
+    `primeiro = ${primeiroCodigo(ordemEan.text)}`);
+
+  const ordemRef = await buscarProd('REF661');
+  ok('referencia exata vem em primeiro lugar', primeiroCodigo(ordemRef.text) === '661',
+    `primeiro = ${primeiroCodigo(ordemRef.text)}`);
+
+  const ordemPrefixo = await buscarProd('688');
+  ok('codigo que comeca com o termo tambem sobe', primeiroCodigo(ordemPrefixo.text) === '6881',
+    `primeiro = ${primeiroCodigo(ordemPrefixo.text)}`);
+
+  const ordemTexto = await buscarProd('PRODUTO QUE CONTEM');
+  ok('busca por descricao continua funcionando',
+    ordemTexto.text.includes('AAA PRODUTO QUE CONTEM 661 NA DESCRICAO'));
+
   section('Busca ao vivo e identificacao na barra lateral');
   const paginaLateral = await http.get('/orcamentos');
   const versaoApp = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;

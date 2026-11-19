@@ -104,6 +104,42 @@ function filtroTermos(termo) {
   };
 }
 
+// campos que identificam o item (codigo, EAN, codigo do fabricante, referencia)
+const CAMPOS_CODIGO = ['internal_code', 'ean', 'manufacturer_code', 'reference'];
+
+/**
+ * Ordem de "certeiro" para a busca: o que bate exatamente com um codigo vem
+ * antes de tudo; depois o que comeca com o termo; depois o que contem o termo;
+ * e por fim o que casou apenas pela descricao.
+ *   0 = codigo/EAN/referencia igual ao que foi digitado
+ *   1 = codigo/EAN/referencia comecando com o termo
+ *   2 = codigo/EAN/referencia contendo o termo em qualquer posicao
+ *   3 = casou apenas pela descricao/marca
+ */
+function expressaoRelevancia(termo) {
+  const t = String(termo || '').trim();
+  if (!t) return null;
+  const lit = `'${t.replace(/'/g, "''")}'`;
+
+  const exato = CAMPOS_CODIGO.map((c) => `UPPER(p.${c}) = UPPER(${lit})`).join(' OR ');
+  const comeca = CAMPOS_CODIGO.map((c) => `p.${c} LIKE ${lit} || '%'`).join(' OR ');
+  const contem = CAMPOS_CODIGO.map((c) => `p.${c} LIKE '%' || ${lit} || '%'`).join(' OR ');
+
+  return `CASE WHEN ${exato} THEN 0 WHEN ${comeca} THEN 1 WHEN ${contem} THEN 2 ELSE 3 END`;
+}
+
+function ordenarPorTermo(termo, extra = '') {
+  const relevancia = expressaoRelevancia(termo);
+  // entre itens igualmente certeiros, o que tem codigo cadastrado vem primeiro
+  const semCodigo = "CASE WHEN p.internal_code IS NULL OR TRIM(p.internal_code) = '' THEN 1 ELSE 0 END";
+  const partes = [];
+  if (relevancia) partes.push(relevancia);
+  partes.push(semCodigo);
+  if (extra) partes.push(extra);
+  partes.push('p.description COLLATE NOCASE');
+  return `ORDER BY ${partes.join(', ')}`;
+}
+
 export function searchProducts({ q = '', supplierId = null, limit = 40, offset = 0 } = {}) {
   const termo = String(q || '').trim();
 
@@ -119,7 +155,7 @@ export function searchProducts({ q = '', supplierId = null, limit = 40, offset =
              JOIN products p ON p.id = products_fts.rowid
              JOIN suppliers s ON s.id = p.supplier_id
             WHERE products_fts MATCH ? AND p.active = 1${c.filtro}
-            ORDER BY bm25(products_fts), p.description COLLATE NOCASE
+            ${ordenarPorTermo(termo, 'bm25(products_fts)')}
             LIMIT ? OFFSET ?`,
           ...c.params, limit, offset,
         );
@@ -138,7 +174,7 @@ export function searchProducts({ q = '', supplierId = null, limit = 40, offset =
                  FROM products p JOIN suppliers s ON s.id = p.supplier_id
                 WHERE p.active = 1 AND ${f.sql}`;
     if (supplierId) { sql += ' AND p.supplier_id = ?'; params.push(supplierId); }
-    sql += ' ORDER BY p.description COLLATE NOCASE LIMIT ? OFFSET ?';
+    sql += ` ${ordenarPorTermo(termo)} LIMIT ? OFFSET ?`;
     params.push(limit, offset);
     return all(sql, ...params);
   }
