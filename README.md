@@ -98,13 +98,25 @@ preço por item, a economia e o total de cada um.
 | **Margem** | markup sobre o custo ou margem sobre o preço de venda |
 | **Preço de venda editável** | digite o preço final de um item, ignorando a margem naquela linha |
 | **Serviço de instalação** | percentual sobre os produtos; **0 = orçamento sem serviço** |
+| **Serviços avulsos** | lance serviços à mão (lançamento de cabo, mão de obra) com valor próprio, **sem margem** |
 | **Outras despesas** | percentual ou valor fixo sobre produtos, serviços ou total |
 | **Arredondamento** | sobe o preço para o próximo múltiplo (ex.: R$ 0,10) |
 | **Fornecedores misturados** | cada linha pode vir de um fornecedor diferente |
+| **Observações** | texto do PDF/planilha: padrão em Configurações, editável por orçamento |
 | **Clonar** | cria o mesmo orçamento para outro fornecedor com ajuste % sobre o preço final |
 
 O painel calcula em tempo real: custo, produtos, serviços, despesas, total,
 **lucro bruto**, **margem efetiva** e **markup real**.
+
+**Serviços avulsos:** em *Adicionar produtos → Adicionar serviço*, informe descrição,
+quantidade e valor. O valor é final — não recebe margem nem entra no custo. No
+documento eles aparecem num bloco **Serviços**, separados dos produtos, e o
+percentual de instalação continua incidindo só sobre os produtos.
+
+**Observações e condições comerciais:** o texto sai no PDF e na planilha. Em
+*Configurações* você edita o **padrão** de todas as propostas (com `{dias}` para a
+validade e `{empresa}` para o nome); em *Dados da proposta* de cada orçamento, o
+campo já vem preenchido e o que você escrever ali vale só para aquele orçamento.
 
 ### Projeto: vencedor e perdedores
 
@@ -459,7 +471,9 @@ orca3/
 │   ├── importer.js           detecção de colunas e importação
 │   ├── calc.js               motor de margem, despesas e serviço
 │   ├── clone.js              clonagem (base do perdedor)
-│   ├── print.js              folha A4 para PDF│   ├── exporter.js           planilha e comparativo
+│   ├── print.js              folha A4 para PDF
+│   ├── exporter.js           planilha e comparativo
+│   ├── observacoes.js        texto das observações do PDF/planilha
 │   ├── repo.js               consultas de dados
 │   ├── ui.js                 componentes de tela
 │   └── routes/               telas: auth, admin, catalog, project, arquivos, quotes
@@ -479,7 +493,7 @@ orca3/
 node tools/selftest.js
 ```
 
-**196 verificações** de ponta a ponta, num banco temporário isolado: login e
+**248 verificações** de ponta a ponta, num banco temporário isolado: login e
 permissões, CSRF, cadastros, importação de dois layouts de planilha diferentes,
 planilha modelo (ida e volta), preço de venda manual, orçamento sem serviço, os
 5 layouts, clonagem com ajuste, projeto com vencedor e perdedores, PDF de todas as

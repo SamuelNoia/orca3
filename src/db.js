@@ -250,6 +250,13 @@ export const DEFAULTS = {
   default_service_pct: '65',
   default_valid_days: '15',
   company_short: 'EMPRESA EXEMPLO',
+  // texto das observações que vai no PDF e na planilha; {dias} e {empresa} sao trocados
+  observacoes_padrao: [
+    '1. Validade desta proposta: {dias} dias a contar da data de emissão.',
+    '2. Fornecimento dos materiais e execução dos serviços de instalação técnica realizados pela {empresa}.',
+    '3. Valores unitários sujeitos a reajuste conforme variação de mercado.',
+    '4. Garantia dos materiais conforme fabricantes e 12 meses para os serviços.',
+  ].join('\n'),
 };
 
 let _db = null;

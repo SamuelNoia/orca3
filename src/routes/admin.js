@@ -263,6 +263,13 @@ export function registerAdminRoutes() {
             ${field({ label: 'Serviço de instalação (%)', name: 'default_service_pct', type: 'number', step: '0.01', value: setting('default_service_pct') })}
             ${field({ label: 'Validade da proposta (dias)', name: 'default_valid_days', type: 'number', value: setting('default_valid_days') })}
           </div>
+          ${textarea({
+            label: 'Observações e condições comerciais (texto padrão)',
+            name: 'observacoes_padrao',
+            value: setting('observacoes_padrao'),
+            rows: 5,
+            hint: 'Uma linha por item. Aparece no PDF e na planilha. Use {dias} para a validade e {empresa} para o nome da empresa. Pode ser trocado em cada orçamento.',
+          })}
         `)}
         <div class="form-actions">${button('Salvar configurações', { kind: 'primary' })}</div>
       </form>
@@ -330,6 +337,7 @@ export function registerAdminRoutes() {
     setSetting('default_margin_mode', str(ctx.fields.default_margin_mode) === 'margin' ? 'margin' : 'markup');
     setSetting('default_service_pct', String(num(ctx.fields.default_service_pct, 0)));
     setSetting('default_valid_days', String(num(ctx.fields.default_valid_days, 15)));
+    setSetting('observacoes_padrao', str(ctx.fields.observacoes_padrao));
 
     saveSupplier(company?.id || null, {
       name: str(ctx.fields.name) || str(ctx.fields.legal_name) || 'Empresa',

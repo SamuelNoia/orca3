@@ -1009,6 +1009,95 @@ async function main() {
   });
   ok('login funciona com o banco restaurado', lgFinal.status === 303);
 
+  section('Servicos lancados a mao e observacoes');
+  const paginaServ = await hb.get(`/orcamentos/${orcId}`);
+  const addServico = await hb.post(`/orcamentos/${orcId}/itens`, {
+    _csrf: tokenOf(paginaServ.text),
+    manual: '1',
+    is_service: '1',
+    description: 'Servico de lancamento de cabo',
+    qty: '1',
+    unit_cost: '1000,00',
+  });
+  ok('adicionar servico aceito', addServico.status === 303, `status=${addServico.status}`);
+
+  const dbS = new DatabaseSync(DB_PATH, { readOnly: true });
+  const servico = dbS.prepare(
+    "SELECT id, is_service, qty, unit_cost FROM quote_items WHERE description = 'Servico de lancamento de cabo' ORDER BY id DESC LIMIT 1",
+  ).get();
+  dbS.close();
+  ok('servico gravado como servico', servico && Number(servico.is_service) === 1, `is_service=${servico?.is_service}`);
+  ok('valor do servico gravado', Math.abs((servico?.unit_cost || 0) - 1000) < 0.01, String(servico?.unit_cost));
+
+  const paginaComServico = await hb.get(`/orcamentos/${orcId}`);
+  ok('pagina mostra o servico', paginaComServico.text.includes('Servico de lancamento de cabo'));
+  ok('pagina marca a linha como servico', paginaComServico.text.includes('>serviço<'));
+  ok('resumo separa servicos lancados', paginaComServico.text.includes('Serviços lançados'));
+
+  const impressaoServ = await hb.get(`/orcamentos/${orcId}/imprimir`);
+  ok('impressao tem o bloco de servicos', impressaoServ.text.includes('>Serviços<'));
+  ok('impressao mostra o valor do servico', impressaoServ.text.includes('1.000,00'));
+  ok('impressao mostra o total dos servicos', impressaoServ.text.includes('Serviços</td>'));
+
+  const planilhaServ = await hb.get(`/orcamentos/${orcId}/exportar.xlsx`);
+  ok('planilha com servico gera', planilhaServ.status === 200 && planilhaServ.buffer[0] === 0x50);
+
+  // observacoes: texto padrao editavel nas configuracoes
+  const dbConf = new DatabaseSync(DB_PATH, { readOnly: true });
+  const confAtual = Object.fromEntries(dbConf.prepare('SELECT key, value FROM settings').all().map((r) => [r.key, r.value]));
+  const empresaAtual = dbConf.prepare('SELECT * FROM suppliers WHERE is_own = 1 LIMIT 1').get() || {};
+  dbConf.close();
+
+  const pagConf = await hb.get('/configuracoes');
+  const salvarConf = await hb.post('/configuracoes', {
+    _csrf: tokenOf(pagConf.text),
+    app_name: confAtual.app_name || 'Central de Orcamentos',
+    default_margin_pct: confAtual.default_margin_pct || '60',
+    default_margin_mode: confAtual.default_margin_mode || 'markup',
+    default_service_pct: confAtual.default_service_pct || '0',
+    default_valid_days: confAtual.default_valid_days || '15',
+    observacoes_padrao: '1. GARANTIA DE 24 MESES PARA OS SERVICOS.\n2. ENTREGA EM 30 DIAS.',
+    legal_name: empresaAtual.legal_name || 'Empresa',
+    name: empresaAtual.name || 'Empresa',
+    cnpj: empresaAtual.cnpj || '',
+    ie: empresaAtual.ie || '',
+    address: empresaAtual.address || '',
+    contact: empresaAtual.contact || '',
+    email: empresaAtual.email || '',
+    bank_info: empresaAtual.bank_info || '',
+    layout: empresaAtual.layout || 'classico',
+  });
+  ok('configuracoes salvam as observacoes', salvarConf.status === 303);
+
+  const dbObs = new DatabaseSync(DB_PATH, { readOnly: true });
+  const obsSalvas = dbObs.prepare("SELECT value FROM settings WHERE key = 'observacoes_padrao'").get();
+  dbObs.close();
+  ok('texto padrao gravado', String(obsSalvas?.value).includes('GARANTIA DE 24 MESES'));
+
+  const impressaoPadrao = await hb.get(`/orcamentos/${orcId}/imprimir`);
+  ok('impressao usa o texto padrao novo', impressaoPadrao.text.includes('GARANTIA DE 24 MESES'));
+  ok('impressao nao mostra o texto antigo', !impressaoPadrao.text.includes('12 meses para os serviços'));
+
+  // texto do proprio orcamento tem prioridade
+  const dbQ = new DatabaseSync(DB_PATH);
+  dbQ.prepare('UPDATE quotes SET observations = ? WHERE id = ?').run('TEXTO EXCLUSIVO DESTE ORCAMENTO', orcId);
+  dbQ.close();
+  const impressaoPropria = await hb.get(`/orcamentos/${orcId}/imprimir`);
+  ok('observacao do orcamento tem prioridade', impressaoPropria.text.includes('TEXTO EXCLUSIVO DESTE ORCAMENTO'));
+  ok('nao mistura com o texto padrao', !impressaoPropria.text.includes('GARANTIA DE 24 MESES'));
+
+  const pagOrcObs = await hb.get(`/orcamentos/${orcId}`);
+  ok('campo de observacoes vem preenchido', pagOrcObs.text.includes('TEXTO EXCLUSIVO DESTE ORCAMENTO'));
+
+  // desfaz para nao afetar o restante
+  const dbQ2 = new DatabaseSync(DB_PATH);
+  dbQ2.prepare('UPDATE quotes SET observations = NULL WHERE id = ?').run(orcId);
+  dbQ2.prepare("UPDATE settings SET value = ? WHERE key = 'observacoes_padrao'").run(
+    Object.keys(confAtual).length ? confAtual.observacoes_padrao || '' : '',
+  );
+  dbQ2.prepare('DELETE FROM quote_items WHERE id = ?').run(servico?.id);
+  dbQ2.close();
+
   section('Excluir projeto');
   const dbProj = new DatabaseSync(DB_PATH, { readOnly: true });
   const clienteTeste = dbProj.prepare('SELECT id FROM clients LIMIT 1').get();

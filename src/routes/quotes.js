@@ -9,6 +9,7 @@ import {
 import { buildQuoteWorkbook, buildComparisonWorkbook } from '../exporter.js';
 import { fmtMoney, fmtQty, fmtPct, unitPriceFor, round2, computeQuote } from '../calc.js';
 import { layoutInfo } from '../layouts.js';
+import { linhasObservacoes } from '../observacoes.js';
 import { quoteSheetHtml, printToolbar } from '../print.js';
 import { tituloBase } from '../clone.js';
 import {
@@ -344,7 +345,7 @@ export function registerQuoteRoutes() {
     requireUser(ctx);
     const full = loadQuote(Number(ctx.params.id));
     if (!full) throw new HttpError(404, 'Orçamento não encontrado.');
-    const { quote, items, calc, offers, client, project } = full;
+    const { quote, items, calc, offers, client, project, emitter } = full;
 
     const busca = ctx.url.searchParams.get('busca') || '';
     const results = busca.trim().length >= 2 ? searchProducts({ q: busca, limit: 12 }) : [];
@@ -360,12 +361,24 @@ export function registerQuoteRoutes() {
         ? (Number(it.unit_cost) <= cheapest + 0.001 ? '<span class="offer-best">melhor</span>' : `<span class="offer-bad">+${brNum(Number(it.unit_cost) - cheapest)}</span>`)
         : '';
 
+      const ehServico = Number(it.is_service) === 1;
+      const servicoCelulas = `
+        <td class="center"><span class="tag">serviço</span></td>
+        <td><input class="qty" type="text" name="q${it.id}" value="${brQty(it.qty)}" data-autosave></td>
+        <td class="small muted" style="text-align:right">—</td>
+        <td><input type="text" name="p${it.id}" value="${brNum(it.unit_cost)}" data-money
+             title="Valor do serviço. Não recebe margem." style="text-align:right;font-weight:700;color:var(--navy)"></td>
+        <td class="num strong">${brNum(line.line_total)}</td>
+        <td class="center">
+          <button class="btn sm danger" form="del-${it.id}" title="Remover serviço">✕</button>
+        </td>`;
+
       return `<tr>
         <td class="center small muted">${i + 1}</td>
         <td class="small mono">${esc(it.internal_code || '—')}</td>
         <td class="desc">${esc(it.description)}
           <div class="small muted">${[it.brand, it.ean ? `EAN ${it.ean}` : null].filter(Boolean).map(esc).join(' · ')}</div></td>
-        <td>${offersForItem.length > 1
+        ${ehServico ? servicoCelulas : `<td>${offersForItem.length > 1
           ? `<select name="f${it.id}" data-offers>${optionList}</select>`
           : `<span class="small muted">${esc(it.supplier_name || 'manual')}</span><input type="hidden" name="f${it.id}" value="${it.supplier_id || ''}">`}
           ${melhor}</td>
@@ -378,7 +391,7 @@ export function registerQuoteRoutes() {
         <td class="num strong">${brNum(line.line_total)}</td>
         <td class="center">
           <button class="btn sm danger" form="del-${it.id}" title="Remover item">✕</button>
-        </td>
+        </td>`}
       </tr>`;
     }).join('');
 
@@ -441,6 +454,21 @@ export function registerQuoteRoutes() {
             <div id="resultados-busca">${blocoBuscaProdutos(ctx, quote.id, results, busca)}</div>
             <hr class="sep">
             <details>
+              <summary class="small" style="cursor:pointer;font-weight:600">Adicionar serviço (mão de obra, instalação…)</summary>
+              <form method="post" action="/orcamentos/${quote.id}/itens" style="margin-top:12px">
+                ${csrfField(ctx)}
+                <input type="hidden" name="manual" value="1">
+                <input type="hidden" name="is_service" value="1">
+                <div class="form-grid three">
+                  ${field({ label: 'Código', name: 'internal_code' })}
+                  ${field({ label: 'Descrição do serviço', name: 'description', required: true, className: 'span2' })}
+                  ${field({ label: 'Quantidade', name: 'qty', value: '1' })}
+                  ${field({ label: 'Valor unitário', name: 'unit_cost', value: '0,00', hint: 'Valor final do serviço — não recebe margem.' })}
+                  ${button('Adicionar serviço', { kind: 'soft' })}
+                </div>
+              </form>
+            </details>
+            <details>
               <summary class="small" style="cursor:pointer;font-weight:600">Adicionar item manual (fora do catálogo)</summary>
               <form method="post" action="/orcamentos/${quote.id}/itens" style="margin-top:12px">
                 ${csrfField(ctx)}
@@ -475,7 +503,8 @@ export function registerQuoteRoutes() {
             <div class="summary"><dl>
               <div class="row"><span>Custo dos produtos</span><span>${fmtMoney(calc.costTotal)}</span></div>
               <div class="row"><span>Produtos (venda)</span><span>${fmtMoney(calc.productsTotal)}</span></div>
-              <div class="row"><span>Serviços (${fmtPct(calc.servicePct)})</span><span>${fmtMoney(calc.serviceValue)}</span></div>
+              ${calc.servicesTotal > 0 ? `<div class="row"><span>Serviços lançados</span><span>${fmtMoney(calc.servicesTotal)}</span></div>` : ''}
+              ${calc.servicePct > 0 ? `<div class="row"><span>Instalação (${fmtPct(calc.servicePct)})</span><span>${fmtMoney(calc.serviceValue)}</span></div>` : ''}
               ${calc.expenseLines.map((e) => `<div class="row"><span>${esc(e.description)}</span><span>${fmtMoney(e.amount)}</span></div>`).join('')}
               <div class="row total"><span>Total</span><span>${fmtMoney(calc.total)}</span></div>
               <div class="row"><span>Lucro bruto</span><span style="color:var(--ok)">${fmtMoney(calc.profit)}</span></div>
@@ -528,7 +557,14 @@ export function registerQuoteRoutes() {
             ${select({ label: 'Projeto', name: 'project_id', value: quote.project_id || '', options: [{ value: '', label: '— sem projeto —' }].concat(listProjects().map((p) => ({ value: p.id, label: p.name }))) })}
             ${field({ label: 'Código do serviço', name: 'service_code', value: quote.service_code || 'SERV-01' })}
             ${field({ label: 'Descrição do serviço', name: 'service_description', value: quote.service_description || '', className: 'span2' })}
-            ${textarea({ label: 'Observações (uma por linha — substitui o texto padrão)', name: 'observations', value: quote.observations || '', rows: 4, className: 'span2' })}
+            ${textarea({
+              label: 'Observações e condições comerciais (uma por linha)',
+              name: 'observations',
+              value: quote.observations || linhasObservacoes(quote, emitter?.legal_name || emitter?.name || '').join('\n'),
+              rows: 5,
+              className: 'span2',
+              hint: 'É este o texto que sai no PDF e na planilha. Editou aqui, vale só para este orçamento.',
+            })}
           </div>
           <div class="form-actions">
             ${button('Salvar dados', { kind: 'primary' })}
@@ -580,6 +616,14 @@ export function registerQuoteRoutes() {
       const supplierRaw = str(ctx.fields[`f${it.id}`]);
       const priceRaw = str(ctx.fields[`p${it.id}`]);
       const qty = qtyRaw === '' ? it.qty : num(qtyRaw, it.qty);
+
+      // servico: o campo de preco e o valor final (nao tem custo nem margem)
+      if (Number(it.is_service) === 1) {
+        const valor = priceRaw === '' ? it.unit_cost : num(priceRaw, it.unit_cost);
+        run('UPDATE quote_items SET qty = ?, unit_cost = ?, price_override = NULL WHERE id = ?', qty, valor, it.id);
+        continue;
+      }
+
       const supplierId = supplierRaw === '' ? it.supplier_id : Number(supplierRaw) || null;
       let cost = costRaw === '' ? it.unit_cost : num(costRaw, it.unit_cost);
 
@@ -612,15 +656,16 @@ export function registerQuoteRoutes() {
     if (manual) {
       const description = str(ctx.fields.description).trim();
       if (!description) return redirect(`/orcamentos/${quoteId}?err=${encodeURIComponent('Informe a descrição.')}`);
+      const ehServico = str(ctx.fields.is_service) === '1';
       const pos = Number(get('SELECT COALESCE(MAX(position),0) AS p FROM quote_items WHERE quote_id = ?', quoteId)?.p || 0) + 1;
       run(
-        `INSERT INTO quote_items (quote_id, position, internal_code, description, qty, unit_cost, supplier_id, unit)
-         VALUES (?,?,?,?,?,?,?,?)`,
+        `INSERT INTO quote_items (quote_id, position, internal_code, description, qty, unit_cost, supplier_id, unit, is_service)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
         quoteId, pos, str(ctx.fields.internal_code) || null, description, qty,
-        num(ctx.fields.unit_cost, 0), null, 'UN',
+        num(ctx.fields.unit_cost, 0), null, 'UN', ehServico ? 1 : 0,
       );
       touch(quoteId);
-      return redirect(`/orcamentos/${quoteId}?msg=${encodeURIComponent('Item adicionado.')}`);
+      return redirect(`/orcamentos/${quoteId}?msg=${encodeURIComponent(ehServico ? 'Serviço adicionado.' : 'Item adicionado.')}`);
     }
 
     const productId = Number(str(ctx.fields.product_id));

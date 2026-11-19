@@ -53,31 +53,45 @@ export function computeQuote(quote, items = [], expenses = []) {
   const lines = items.map((it, i) => {
     const qty = Number(it.qty) || 0;
     const cost = Number(it.unit_cost) || 0;
+    const ehServico = Number(it.is_service) === 1;
     // preco de venda digitado a mao tem prioridade sobre a margem
     const override = it.price_override !== null && it.price_override !== undefined
       && Number(it.price_override) > 0
       ? Number(it.price_override)
       : null;
-    const unit = override !== null ? round2(override) : unitPriceFor(cost, marginPct, marginMode, rounding);
+
+    // servico lancado a mao: unit_cost JA E o preco final, nao recebe margem
+    const unit = ehServico
+      ? round2(override !== null ? override : cost)
+      : (override !== null ? round2(override) : unitPriceFor(cost, marginPct, marginMode, rounding));
+
     const total = round2(qty * unit);
-    costTotal += qty * cost;
+    const lineCostValue = ehServico ? 0 : qty * cost;
+    costTotal += lineCostValue;
+
     return {
       ...it,
       position: it.position ?? i + 1,
+      is_service_item: ehServico,
       unit_price: unit,
       line_total: total,
-      line_cost: round2(qty * cost),
-      margin_value: round2(total - qty * cost),
+      line_cost: round2(lineCostValue),
+      margin_value: round2(total - lineCostValue),
       manual_price: override !== null,
     };
   });
 
-  const productsTotal = round2(lines.reduce((s, l) => s + l.line_total, 0));
+  const productLines = lines.filter((l) => !l.is_service_item);
+  const serviceLines = lines.filter((l) => l.is_service_item);
+
+  const productsTotal = round2(productLines.reduce((s, l) => s + l.line_total, 0));
+  const servicesTotal = round2(serviceLines.reduce((s, l) => s + l.line_total, 0));
+  // percentual de instalacao incide apenas sobre os produtos
   const serviceValue = round2(productsTotal * (servicePct / 100));
 
   // Progressivo: cada despesa percentual incide sobre o acumulado das linhas acima,
   // exatamente como a formula do Excel (=SOMA(das linhas anteriores) * percentual).
-  let running = round2(productsTotal + serviceValue);
+  let running = round2(productsTotal + servicesTotal + serviceValue);
   const expenseLines = expenses.map((e, i) => {
     const value = Number(e.value) || 0;
     const kind = e.kind === 'fixed' ? 'fixed' : 'percent';
@@ -86,7 +100,9 @@ export function computeQuote(quote, items = [], expenses = []) {
     if (kind === 'fixed') {
       amount = round2(value);
     } else {
-      const baseValue = base === 'services' ? serviceValue : base === 'total' ? running : productsTotal;
+      const baseValue = base === 'services'
+        ? round2(servicesTotal + serviceValue)
+        : base === 'total' ? running : productsTotal;
       amount = round2(baseValue * (value / 100));
     }
     running = round2(running + amount);
@@ -103,7 +119,7 @@ export function computeQuote(quote, items = [], expenses = []) {
   const fixedTotal = round2(
     expenseLines.filter((e) => e.kind === 'fixed').reduce((s, e) => s + e.amount, 0),
   );
-  const total = round2(productsTotal + serviceValue + expensesTotal);
+  const total = round2(productsTotal + servicesTotal + serviceValue + expensesTotal);
 
   const profit = round2(total - costTotal);
   const effectiveMargin = total > 0 ? round2((profit / total) * 100) : 0;
@@ -111,8 +127,11 @@ export function computeQuote(quote, items = [], expenses = []) {
 
   return {
     lines,
+    productLines,
+    serviceLines,
     expenseLines,
     productsTotal,
+    servicesTotal,
     costTotal: round2(costTotal),
     serviceValue,
     expensesTotal,

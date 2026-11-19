@@ -1,6 +1,7 @@
 // Renderiza um orcamento como folha A4 para impressao / PDF.
 // Usado na impressao individual e na impressao de todos do projeto.
 import { themeFor } from './layouts.js';
+import { linhasObservacoes } from './observacoes.js';
 
 const brNum = (v) => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const brQty = (v) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
@@ -29,24 +30,34 @@ export function quoteSheetHtml({ quote, items, calc, client, emitter, breakAfter
   const empresa = (emitter?.legal_name || emitter?.name || '').toUpperCase();
   const borda = `1px solid #${t.borderColor}`;
 
-  const linhas = items.map((it, i) => `<tr>
+  const linhaHtml = (it, i) => `<tr>
     <td style="border-bottom:${borda};padding:${pad}px 8px;text-align:center">${esc(it.internal_code || '')}</td>
     <td style="border-bottom:${borda};padding:${pad}px 8px">${esc(it.description)}</td>
     <td style="border-bottom:${borda};padding:${pad}px 8px;text-align:center">${brQty(it.qty)}</td>
     <td style="border-bottom:${borda};padding:${pad}px 8px;text-align:right">${brNum(calc.lines[i]?.unit_price)}</td>
     <td style="border-bottom:${borda};padding:${pad}px 8px;text-align:right">${brNum(calc.lines[i]?.line_total)}</td>
-  </tr>`).join('');
+  </tr>`;
 
-  const obsCustom = String(quote.observations || '').trim();
-  const obs = obsCustom
-    ? obsCustom.split(/\r?\n/).filter(Boolean)
-      .map((l) => `<p style="margin:2px 0;font-size:${px(t.szBody)}px">${esc(l)}</p>`).join('')
-    : [
-      `1. Validade desta proposta: ${quote.valid_days || 15} dias a contar da data de emissão.`,
-      `2. Fornecimento dos materiais e execução dos serviços de instalação técnica realizados pela ${empresa}.`,
-      '3. Valores unitários sujeitos a reajuste conforme variação de mercado.',
-      '4. Garantia dos materiais conforme fabricantes e 12 meses para os serviços.',
-    ].map((l) => `<p style="margin:2px 0;font-size:${px(t.szBody)}px">${esc(l)}</p>`).join('');
+  const linhas = items
+    .map((it, i) => ({ it, i }))
+    .filter(({ it }) => Number(it.is_service) !== 1)
+    .map(({ it, i }) => linhaHtml(it, i))
+    .join('');
+
+  // servicos lancados a mao aparecem depois dos produtos, com o seu proprio titulo
+  const servicosMarcados = items
+    .map((it, i) => ({ it, i }))
+    .filter(({ it }) => Number(it.is_service) === 1);
+
+  const blocoServicos = servicosMarcados.length
+    ? `<tr>
+        <td colspan="5" style="background:#${t.soft};padding:${pad + 2}px 8px;font-weight:700;font-size:${px(t.szHeader)}px">Serviços</td>
+      </tr>
+      ${servicosMarcados.map(({ it, i }) => linhaHtml(it, i)).join('')}`
+    : '';
+
+  const obs = linhasObservacoes(quote, emitter?.legal_name || emitter?.name || '')
+    .map((l) => `<p style="margin:2px 0;font-size:${px(t.szBody)}px">${esc(l)}</p>`).join('');
 
   const despesas = calc.expenseLines
     .map((e) => `<tr>
@@ -85,12 +96,16 @@ export function quoteSheetHtml({ quote, items, calc, client, emitter, breakAfter
           <th style="background:#${t.headerFill};color:#${t.headerText};font-size:${px(t.szHeader)}px;text-align:right;padding:${pad + 2}px 8px">Total</th>
         </tr>
       </thead>
-      <tbody>${linhas}</tbody>
+      <tbody>${linhas}${blocoServicos}</tbody>
       <tfoot>
         <tr>
           <td colspan="4" style="background:#${t.soft};padding:${pad + 3}px 8px;font-weight:700;font-size:${px(t.szTotal)}px">Produtos — ${esc(quote.title)}</td>
           <td style="background:#${t.soft};padding:${pad + 3}px 8px;text-align:right;font-weight:700;font-size:${px(t.szTotal)}px">${brNum(calc.productsTotal)}</td>
         </tr>
+        ${calc.servicesTotal > 0 ? `<tr>
+          <td colspan="4" style="background:#${t.soft};padding:${pad + 2}px 8px">Serviços</td>
+          <td style="background:#${t.soft};padding:${pad + 2}px 8px;text-align:right">${brNum(calc.servicesTotal)}</td>
+        </tr>` : ''}
         ${calc.servicePct > 0 ? `<tr>
           <td colspan="4" style="background:#${t.soft};padding:${pad + 2}px 8px">Serviço de instalação</td>
           <td style="background:#${t.soft};padding:${pad + 2}px 8px;text-align:right">${brNum(calc.serviceValue)}</td>

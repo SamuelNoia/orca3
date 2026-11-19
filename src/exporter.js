@@ -5,6 +5,7 @@
 import { buildXlsx, quoteSheet, safeSheetName } from './xlsx.js';
 import { round2 } from './calc.js';
 import { themeFor } from './layouts.js';
+import { linhasObservacoes } from './observacoes.js';
 
 const COLS = [11, 26, 8, 13, 20, 20];
 const money = (v) => round2(Number(v) || 0);
@@ -24,24 +25,6 @@ export function slug(text) {
     .slice(0, 80) || 'orcamento';
 }
 
-function numeroPorExtenso(n) {
-  const map = {
-    7: 'sete', 10: 'dez', 15: 'quinze', 20: 'vinte', 30: 'trinta', 45: 'quarenta e cinco', 60: 'sessenta', 90: 'noventa',
-  };
-  return map[Number(n)] || String(n);
-}
-
-function obsLines(quote, emitterName) {
-  const custom = String(quote.observations || '').trim();
-  if (custom) return custom.split(/\r?\n/).filter((l) => l.trim());
-  const dias = Number(quote.valid_days) || 15;
-  return [
-    `1. Validade desta proposta: ${dias} (${numeroPorExtenso(dias)}) dias a contar da data de emissão.`,
-    `2. Fornecimento dos materiais e execução dos serviços de instalação técnica realizados pela ${emitterName}.`,
-    '3. Valores unitários sujeitos a reajuste conforme variação de mercado.',
-    '4. Garantia dos materiais conforme fabricantes e garantia de 12 meses para os serviços prestados.',
-  ];
-}
 
 /**
  * @param {object} p
@@ -130,14 +113,19 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
     merges.push(`B${n}:C${n}`);
 
     const firstItemRow = R.length + 1;
-    const items = block.items.length
-      ? block.items
-      : [{ description: '(sem itens)', qty: 1, unit_cost: 0, internal_code: '' }];
+    const todos = block.items.length
+      ? block.items.map((it, i) => ({ it, i }))
+      : [{ it: { description: '(sem itens)', qty: 1, unit_cost: 0, internal_code: '' }, i: 0 }];
+
+    // produtos primeiro, servicos depois: assim a soma dos produtos fica num
+    // intervalo continuo e o servico de instalacao incide so sobre ela
+    const listaProdutos = todos.filter(({ it }) => Number(it.is_service) !== 1);
+    const listaServicos = todos.filter(({ it }) => Number(it.is_service) === 1);
 
     // a margem entra no proprio calculo: o cliente nao ve percentual nenhum
     const margem = Number(((Number(q.margin_pct) || 0) / 100).toFixed(6));
 
-    items.forEach((it, i) => {
+    listaProdutos.forEach(({ it, i }) => {
       const rowNum = R.length + 1;
       const custosRef = `CUSTOS!E${block.custosRows[i] ?? 4}`;
       let formula = q.margin_mode === 'margin'
@@ -159,6 +147,20 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
       merges.push(`B${rowNum}:C${rowNum}`);
     });
     const lastItemRow = R.length;
+
+    // servicos lancados a mao: valor final digitado, sem margem e sem custo
+    for (const { it, i } of listaServicos) {
+      const rowNum = R.length + 1;
+      const line = c.lines[i];
+      push([
+        { v: it.internal_code || '', s: 'center' },
+        { v: it.description, s: 'cell' }, null,
+        { v: Number(it.qty) || 0, s: 'qty' },
+        { v: money(line?.unit_price ?? 0), s: 'money' },
+        { v: money(line?.line_total ?? 0), s: 'money', f: `D${rowNum}*E${rowNum}` },
+      ], T.rowH);
+      merges.push(`B${rowNum}:C${rowNum}`);
+    }
 
     // servico de instalacao (opcional: sem percentual, a linha nao existe)
     let svcRow = null;
@@ -224,7 +226,7 @@ export function buildQuoteWorkbook({ quotes, client, emitter, opts = {} }) {
     const obsHeader = R.length + 1;
     push([{ v: 'OBSERVAÇÕES E CONDIÇÕES COMERCIAIS', s: 'section' }], 18);
     merges.push(`A${obsHeader}:F${obsHeader}`);
-    for (const line of obsLines(q, emitterName)) {
+    for (const line of linhasObservacoes(q, emitterName)) {
       push([{ v: line, s: 'note' }], 13.95);
       merges.push(`A${R.length}:F${R.length}`);
     }
