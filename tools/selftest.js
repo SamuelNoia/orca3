@@ -888,7 +888,7 @@ async function main() {
   ok('tela de arquivar abre', formArq.status === 200 && formArq.text.includes('Baixar e arquivar'));
 
   const pedidoArq = await http.request('POST', `/orcamentos/${orcId}/arquivar`, {
-    form: { _csrf: tokenOf(formArq.text), description: 'PROPOSTA ENVIADA AO CLIENTE' },
+    form: { _csrf: tokenOf(formArq.text), description: 'PROPOSTA ENVIADA AO CLIENTE', formato: 'xlsx' },
   });
   ok('arquivar devolve a planilha na hora', pedidoArq.status === 200 && pedidoArq.buffer[0] === 0x50 && pedidoArq.buffer[1] === 0x4b);
 
@@ -910,7 +910,7 @@ async function main() {
   const formArqProj = await http.get(`/projetos/${projId}/arquivar`);
   ok('arquivar pacote do projeto abre', formArqProj.status === 200);
   const pacote = await http.request('POST', `/projetos/${projId}/arquivar`, {
-    form: { _csrf: tokenOf(formArqProj.text), description: 'PACOTE DO PREGAO' },
+    form: { _csrf: tokenOf(formArqProj.text), description: 'PACOTE DO PREGAO', formato: 'zip' },
   });
   ok('pacote do projeto gerado e guardado', pacote.status === 200 && pacote.buffer[0] === 0x50);
 
@@ -923,6 +923,54 @@ async function main() {
     _csrf: tokenOf(listaArq.text),
   });
   ok('excluir arquivo guardado', excluirArq.status === 303);
+
+  section('PDF gerado no servidor');
+  const pdfOrc = await http.get(`/orcamentos/${orcId}/pdf`);
+  ok('baixa o PDF do orcamento', pdfOrc.status === 200, `status=${pdfOrc.status}`);
+  ok('arquivo comeca com %PDF',
+    pdfOrc.buffer.subarray(0, 5).toString('latin1') === '%PDF-', pdfOrc.buffer.subarray(0, 8).toString('latin1'));
+  ok('PDF termina com EOF', pdfOrc.buffer.subarray(-8).toString('latin1').includes('%%EOF'));
+  ok('PDF tem mais de um objeto', (pdfOrc.buffer.toString('latin1').match(/\/Type \/Page /g) || []).length >= 1);
+  ok('PDF tem a fonte Helvetica', pdfOrc.buffer.toString('latin1').includes('/BaseFont /Helvetica'));
+
+  const pdfProj = await http.get(`/projetos/${projId}/pdf`);
+  ok('baixa o PDF do projeto', pdfProj.status === 200 && pdfProj.buffer.subarray(0, 5).toString('latin1') === '%PDF-');
+  const paginasProj = (pdfProj.buffer.toString('latin1').match(/\/Type \/Page /g) || []).length;
+  ok('PDF do projeto tem uma pagina por proposta', paginasProj >= 2, `${paginasProj} pagina(s)`);
+
+  section('Arquivar em PDF');
+  const formPdf = await http.get(`/orcamentos/${orcId}/arquivar`);
+  ok('tela de arquivar oferece PDF', formPdf.text.includes('value="pdf"'));
+  ok('tela de arquivar oferece os dois', formPdf.text.includes('value="ambos"'));
+
+  const arqPdf = await http.request('POST', `/orcamentos/${orcId}/arquivar`, {
+    form: { _csrf: tokenOf(formPdf.text), description: 'PROPOSTA EM PDF', formato: 'pdf' },
+  });
+  ok('arquivar em PDF devolve o arquivo',
+    arqPdf.status === 200 && arqPdf.buffer.subarray(0, 5).toString('latin1') === '%PDF-');
+
+  const dbPdf = new DatabaseSync(DB_PATH, { readOnly: true });
+  const guardadoPdf = dbPdf.prepare("SELECT id, kind, size FROM quote_files WHERE kind = 'pdf' ORDER BY id DESC LIMIT 1").get();
+  dbPdf.close();
+  ok('PDF guardado com tipo pdf', guardadoPdf && guardadoPdf.kind === 'pdf', String(guardadoPdf?.kind));
+  ok('PDF guardado tem tamanho', (guardadoPdf?.size || 0) > 1000, `${guardadoPdf?.size} bytes`);
+
+  const baixarPdf = await http.get(`/arquivos/${guardadoPdf.id}/download`);
+  ok('baixar o PDF guardado', baixarPdf.status === 200 && baixarPdf.buffer.subarray(0, 5).toString('latin1') === '%PDF-');
+
+  const listaComPdf = await http.get('/arquivos');
+  ok('lista mostra o PDF', listaComPdf.text.includes('PDF</span>') || listaComPdf.text.includes('>PDF<'));
+
+  const arqAmbos = await http.request('POST', `/orcamentos/${orcId}/arquivar`, {
+    form: { _csrf: tokenOf(formPdf.text), description: 'PACOTE COMPLETO', formato: 'ambos' },
+  });
+  ok('arquivar os dois devolve zip',
+    arqAmbos.status === 200 && arqAmbos.buffer[0] === 0x50 && arqAmbos.buffer[1] === 0x4b);
+
+  const dbAmbos = new DatabaseSync(DB_PATH, { readOnly: true });
+  const qtdAmbos = dbAmbos.prepare("SELECT COUNT(*) AS n FROM quote_files WHERE description LIKE 'PACOTE COMPLETO%'").get();
+  dbAmbos.close();
+  ok('os dois formatos foram guardados', Number(qtdAmbos?.n) === 2, `${qtdAmbos?.n} registro(s)`);
 
   section('Estrutura das paginas');
   const paginas = [

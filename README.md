@@ -157,6 +157,12 @@ bancários. A página sai **limpa** — sem menu, sem título da plataforma, sem
 sem URL. A margem da página é zerada no CSS, o que também elimina o cabeçalho e o
 rodapé automáticos do navegador.
 
+**Baixar PDF** gera o arquivo **no próprio servidor**, sem passar pelo diálogo de
+impressão: é só clicar e o `.pdf` cai na pasta de downloads. Funciona igual no
+*Baixar PDF* de um projeto, que junta todas as propostas em um documento com uma
+página por participante (o vencedor vem marcado). A opção *PDF / Imprimir* continua
+existindo para quem quer pré-visualizar antes.
+
 Tudo é **gerado na hora a partir do banco** (XLSX, comparativo, ZIP e o HTML do PDF).
 Nada fica armazenado, a não ser que você use **Baixar e arquivar**.
 
@@ -165,10 +171,13 @@ Nada fica armazenado, a não ser que você use **Baixar e arquivar**.
 Para ter o histórico do que foi entregue ao cliente, use **Baixar e arquivar** no
 orçamento ou no projeto:
 
+- escolha o **formato**: PDF, planilha (XLSX) ou **os dois** (baixa um `.zip`);
 - pede uma **descrição** antes de guardar;
 - registra **data e hora** e quem guardou;
 - o arquivo fica **dentro do banco**, então entra no backup;
 - aparece em **Arquivos**, com download e exclusão.
+
+No projeto, o PDF junta todas as propostas em um documento só.
 
 Assim o orçamento pode continuar sendo editado — a cópia guardada fica congelada
 como foi enviada.
@@ -474,6 +483,8 @@ orca3/
 │   ├── print.js              folha A4 para PDF
 │   ├── exporter.js           planilha e comparativo
 │   ├── observacoes.js        texto das observações do PDF/planilha
+│   ├── pdf.js                escritor de PDF (sem dependências)
+│   ├── pdf-quote.js          desenho da proposta em PDF
 │   ├── repo.js               consultas de dados
 │   ├── ui.js                 componentes de tela
 │   └── routes/               telas: auth, admin, catalog, project, arquivos, quotes
@@ -493,7 +504,7 @@ orca3/
 node tools/selftest.js
 ```
 
-**248 verificações** de ponta a ponta, num banco temporário isolado: login e
+**264 verificações** de ponta a ponta, num banco temporário isolado: login e
 permissões, CSRF, cadastros, importação de dois layouts de planilha diferentes,
 planilha modelo (ida e volta), preço de venda manual, orçamento sem serviço, os
 5 layouts, clonagem com ajuste, projeto com vencedor e perdedores, PDF de todas as

@@ -10,6 +10,16 @@ import { buildQuoteWorkbook, buildComparisonWorkbook } from '../exporter.js';
 import { fmtMoney, fmtQty, fmtPct, unitPriceFor, round2, computeQuote } from '../calc.js';
 import { layoutInfo } from '../layouts.js';
 import { linhasObservacoes } from '../observacoes.js';
+import { buildQuotePdf } from '../pdf-quote.js';
+
+/** Nome de arquivo seguro a partir do titulo. */
+function slugNome(texto) {
+  return String(texto || 'proposta')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'proposta';
+}
 import { quoteSheetHtml, printToolbar } from '../print.js';
 import { tituloBase } from '../clone.js';
 import {
@@ -411,7 +421,8 @@ export function registerQuoteRoutes() {
         title: quote.title,
         subtitle: `${esc(client?.name || '')}${project ? ` · <a href="/projetos/${project.id}">${esc(project.name)}</a>` : ''} ${statusBadge(quote.status)}`,
         back: { href: '/orcamentos', label: 'Orçamentos' },
-        actions: `<a class="btn primary" href="/orcamentos/${quote.id}/exportar.xlsx">Gerar planilha</a>
+        actions: `<a class="btn primary" href="/orcamentos/${quote.id}/pdf">Baixar PDF</a>
+                  <a class="btn" href="/orcamentos/${quote.id}/exportar.xlsx">Gerar planilha</a>
                   <a class="btn" href="/orcamentos/${quote.id}/arquivar">Baixar e arquivar</a>
                   <a class="btn" href="/orcamentos/${quote.id}/comparativo.xlsx">Comparativo</a>
                   <a class="btn" href="/orcamentos/${quote.id}/imprimir">PDF / Imprimir</a>
@@ -1010,6 +1021,15 @@ export function registerQuoteRoutes() {
       opts: { includeSummary: false, layout: id },
     });
     return download(`layout-${info.id}.xlsx`, result.buffer);
+  });
+
+  routeGet('/orcamentos/:id/pdf', (ctx) => {
+    requireUser(ctx);
+    const full = loadQuote(Number(ctx.params.id));
+    if (!full) throw new HttpError(404, 'Orçamento não encontrado.');
+    const block = { quote: full.quote, items: full.items, calc: full.calc };
+    const buffer = buildQuotePdf({ quotes: [block], client: full.client, emitter: full.emitter });
+    return download(`orcamento-${slugNome(full.quote.title)}.pdf`, buffer, 'application/pdf');
   });
 
   routeGet('/orcamentos/:id/exportar.xlsx', (ctx) => {

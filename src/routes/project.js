@@ -10,6 +10,7 @@ import { clonarOrcamento, tituloBase } from '../clone.js';
 import { buildQuoteWorkbook } from '../exporter.js';
 import { zipWrite } from '../xlsx.js';
 import { quoteSheetHtml, printToolbar } from '../print.js';
+import { buildQuotePdf } from '../pdf-quote.js';
 import { fmtMoney, fmtPct } from '../calc.js';
 import {
   layout, esc, field, select, card, pageHeader, button, csrfField, badge, emptyState,
@@ -154,7 +155,8 @@ export function registerProjectRoutes() {
         Gere tudo de uma vez: um PDF com todas as propostas em sequência e um pacote com todas as planilhas.
       </p>
       <div class="inline">
-        <a class="btn primary" href="/projetos/${project.id}/imprimir">PDF de todas as propostas</a>
+        <a class="btn primary" href="/projetos/${project.id}/pdf">Baixar PDF</a>
+        <a class="btn" href="/projetos/${project.id}/imprimir">PDF de todas as propostas</a>
         <a class="btn" href="/projetos/${project.id}/planilhas.zip">Baixar planilhas (.zip)</a>
         <a class="btn" href="/projetos/${project.id}/arquivar">Baixar e arquivar</a>
         <a class="btn" href="/projetos/${project.id}/exportar.xlsx">Planilha consolidada</a>
@@ -327,6 +329,37 @@ export function registerProjectRoutes() {
   });
 
   // ---------------------------------------------------------------- pacote de planilhas
+  routeGet('/projetos/:id/pdf', (ctx) => {
+    requireUser(ctx);
+    const dados = carregarProjeto(Number(ctx.params.id));
+    if (!dados) throw new HttpError(404, 'Projeto não encontrado.');
+    const { project, winner, perdedores, client } = dados;
+
+    const ordem = [winner, ...perdedores].filter(Boolean);
+    if (!ordem.length) {
+      return redirect(`/projetos/${project.id}?err=${encodeURIComponent('O projeto não tem orçamentos para imprimir.')}`);
+    }
+
+    const blocos = [];
+    ordem.forEach((q) => {
+      const full = loadQuote(q.id);
+      if (!full) return;
+      blocos.push({
+        quote: full.quote,
+        items: full.items,
+        calc: full.calc,
+        emitter: full.emitter,
+        destaque: q.id === winner?.id
+          ? 'PROPOSTA VENCEDORA'
+          : `PROPOSTA${q.adjust_pct ? ` (+${q.adjust_pct}%)` : ''}`,
+      });
+    });
+
+    const buffer = buildQuotePdf({ quotes: blocos, client });
+    const nome = `propostas-${String(project.name || 'projeto').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').toLowerCase().slice(0, 50)}.pdf`;
+    return download(nome, buffer, 'application/pdf');
+  });
+
   routeGet('/projetos/:id/planilhas.zip', (ctx) => {
     requireUser(ctx);
     const dados = carregarProjeto(Number(ctx.params.id));

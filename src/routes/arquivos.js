@@ -5,12 +5,15 @@ import { get, run, all, nowIso, audit } from '../db.js';
 import { loadQuote, getProject, getClient } from '../repo.js';
 import { buildQuoteWorkbook } from '../exporter.js';
 import { zipWrite } from '../xlsx.js';
+import { buildQuotePdf } from '../pdf-quote.js';
 import { fmtMoney } from '../calc.js';
 import {
-  layout, esc, field, textarea, card, pageHeader, button, csrfField, emptyState, flash,
+  layout, esc, field, select, textarea, card, pageHeader, button, csrfField, emptyState, flash,
 } from '../ui.js';
 
 const MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const MIME_PDF = 'application/pdf';
+const MIME_ZIP = 'application/zip';
 
 function render(ctx, title, body, wide = false) {
   return htmlPage(layout(ctx, { title, body, wide }));
@@ -63,6 +66,39 @@ function pacoteDoProjeto(projectId) {
   return { project, filename: `${slug(project.name)}.zip`, buffer: zipWrite(arquivos) };
 }
 
+/** Gera o PDF da proposta (sem gravar). */
+function pdfDoOrcamento(quoteId) {
+  const full = loadQuote(quoteId);
+  if (!full) return null;
+  const bloco = { quote: full.quote, items: full.items, calc: full.calc };
+  const buffer = buildQuotePdf({ quotes: [bloco], client: full.client, emitter: full.emitter });
+  return { full, filename: `proposta-${slug(full.quote.title)}.pdf`, buffer, mime: MIME_PDF };
+}
+
+/** Gera o PDF com todas as propostas do projeto (sem gravar). */
+function pdfDoProjeto(projectId) {
+  const project = getProject(projectId);
+  if (!project) return null;
+  const quotes = all('SELECT q.* FROM quotes q WHERE q.project_id = ? ORDER BY q.id', projectId);
+  if (!quotes.length) return null;
+
+  const blocos = [];
+  for (const q of quotes) {
+    const full = loadQuote(q.id);
+    if (!full) continue;
+    blocos.push({
+      quote: full.quote,
+      items: full.items,
+      calc: full.calc,
+      emitter: full.emitter,
+      destaque: q.id === project.winner_quote_id ? 'PROPOSTA VENCEDORA' : 'PROPOSTA',
+    });
+  }
+
+  const buffer = buildQuotePdf({ quotes: blocos, client: getClient(project.client_id) });
+  return { project, filename: `${slug(project.name)}-propostas.pdf`, buffer, mime: MIME_PDF };
+}
+
 function listarArquivos({ quoteId = null, projectId = null, limite = 300 } = {}) {
   const conds = [];
   const params = [];
@@ -87,7 +123,7 @@ function tabelaArquivos(ctx, arquivos, { vazio = 'Nenhum arquivo guardado ainda.
   const linhas = arquivos.map((f) => `<tr>
     <td class="strong">${esc(f.description)}
       <div class="small muted">${esc(f.quote_title || f.project_name || '—')}</div></td>
-    <td class="center"><span class="tag">${f.kind === 'zip' ? 'ZIP' : 'XLSX'}</span></td>
+    <td class="center"><span class="tag">${f.kind === 'zip' ? 'ZIP' : f.kind === 'pdf' ? 'PDF' : 'XLSX'}</span></td>
     <td class="num">${(f.size / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} KB</td>
     <td class="small nowrap">${esc(new Date(f.created_at).toLocaleString('pt-BR'))}</td>
     <td class="small muted">${esc(f.user_name || '—')}</td>
@@ -163,9 +199,19 @@ export function registerArquivoRoutes() {
           ${card(null, `
             <form method="post" action="/orcamentos/${id}/arquivar">
               ${csrfField(ctx)}
+              ${select({
+                label: 'Formato',
+                name: 'formato',
+                value: 'pdf',
+                options: [
+                  { value: 'pdf', label: 'PDF — a proposta pronta para enviar' },
+                  { value: 'xlsx', label: 'Planilha (XLSX) — para editar' },
+                  { value: 'ambos', label: 'Os dois (baixa um .zip)' },
+                ],
+              })}
               ${textarea({ label: 'Descrição do arquivo', name: 'description', value: sugestao, rows: 2, hint: 'Ex.: Proposta enviada ao cliente em 17/11. Aparece na lista de arquivos.' })}
               <p class="small muted" style="margin:14px 0 0">
-                A planilha é gerada agora, com os dados atuais do orçamento, e uma cópia fica guardada.
+                O documento é gerado agora, com os dados atuais do orçamento, e uma cópia fica guardada.
                 O download começa em seguida.
               </p>
               <div class="form-actions">
@@ -189,20 +235,42 @@ export function registerArquivoRoutes() {
   post('/orcamentos/:id/arquivar', (ctx) => {
     const user = requireUser(ctx);
     const id = Number(ctx.params.id);
-    const gerado = planilhaDoOrcamento(id);
-    if (!gerado) throw new HttpError(404, 'Orçamento não encontrado.');
+    const formato = ['pdf', 'xlsx', 'ambos'].includes(str(ctx.fields.formato)) ? str(ctx.fields.formato) : 'pdf';
 
+    const referencia = loadQuote(id);
+    if (!referencia) throw new HttpError(404, 'Orçamento não encontrado.');
     const descricao = str(ctx.fields.description).trim()
-      || `Proposta ${gerado.full.quote.code || id} — ${gerado.full.quote.title}`;
+      || `Proposta ${referencia.quote.code || id} — ${referencia.quote.title}`;
 
-    const r = run(
-      `INSERT INTO quote_files (quote_id, project_id, kind, description, filename, mime, size, content, created_at, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      id, gerado.full.quote.project_id, 'xlsx', descricao, gerado.filename, MIME_XLSX,
-      gerado.buffer.length, gerado.buffer, nowIso(), user.id,
-    );
-    audit(user.id, 'file.store', 'quote_files', r.lastId, descricao);
-    return download(gerado.filename, gerado.buffer, MIME_XLSX);
+    const guardar = (tipo, gerado, texto) => {
+      const r = run(
+        `INSERT INTO quote_files (quote_id, project_id, kind, description, filename, mime, size, content, created_at, created_by)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        id, referencia.quote.project_id, tipo, texto, gerado.filename,
+        tipo === 'pdf' ? MIME_PDF : MIME_XLSX,
+        gerado.buffer.length, gerado.buffer, nowIso(), user.id,
+      );
+      audit(user.id, 'file.store', 'quote_files', r.lastId, texto);
+      return r.lastId;
+    };
+
+    if (formato === 'ambos') {
+      const pdf = pdfDoOrcamento(id);
+      const planilha = planilhaDoOrcamento(id);
+      if (!pdf || !planilha) throw new HttpError(404, 'Orçamento não encontrado.');
+      guardar('pdf', pdf, `${descricao} (PDF)`);
+      guardar('xlsx', planilha, `${descricao} (planilha)`);
+      const pacote = zipWrite([
+        { name: pdf.filename, data: pdf.buffer },
+        { name: planilha.filename, data: planilha.buffer },
+      ]);
+      return download(`${slug(descricao)}.zip`, pacote, MIME_ZIP);
+    }
+
+    const gerado = formato === 'xlsx' ? planilhaDoOrcamento(id) : pdfDoOrcamento(id);
+    if (!gerado) throw new HttpError(404, 'Orçamento não encontrado.');
+    guardar(formato, gerado, descricao);
+    return download(gerado.filename, gerado.buffer, formato === 'pdf' ? MIME_PDF : MIME_XLSX);
   });
 
   // ---------------------------------------------------------------- arquivar projeto
@@ -225,6 +293,15 @@ export function registerArquivoRoutes() {
           ${card(null, `
             <form method="post" action="/projetos/${project.id}/arquivar">
               ${csrfField(ctx)}
+              ${select({
+                label: 'Formato',
+                name: 'formato',
+                value: 'pdf',
+                options: [
+                  { value: 'pdf', label: 'PDF — todas as propostas em um documento' },
+                  { value: 'zip', label: 'Planilhas (.zip) — uma por proposta' },
+                ],
+              })}
               ${textarea({ label: 'Descrição do arquivo', name: 'description', value: sugestao, rows: 2, hint: 'Ex.: Pacote enviado ao cliente no pregão de 17/11.' })}
               <div class="form-actions">
                 ${button('Baixar e guardar', { kind: 'primary' })}
@@ -245,17 +322,21 @@ export function registerArquivoRoutes() {
     const project = getProject(Number(ctx.params.id));
     if (!project) throw new HttpError(404, 'Projeto não encontrado.');
 
-    const gerado = pacoteDoProjeto(project.id);
+    const formato = str(ctx.fields.formato) === 'zip' ? 'zip' : 'pdf';
+    const gerado = formato === 'pdf' ? pdfDoProjeto(project.id) : pacoteDoProjeto(project.id);
     if (!gerado) return redirect(`/projetos/${project.id}?err=${encodeURIComponent('O projeto não tem orçamentos.')}`);
 
-    const descricao = str(ctx.fields.description).trim() || `Pacote de propostas — ${project.name}`;
+    const descricao = str(ctx.fields.description).trim()
+      || (formato === 'pdf' ? `Propostas — ${project.name}` : `Pacote de propostas — ${project.name}`);
+
     const r = run(
       `INSERT INTO quote_files (quote_id, project_id, kind, description, filename, mime, size, content, created_at, created_by)
        VALUES (NULL,?,?,?,?,?,?,?,?,?)`,
-      project.id, 'zip', descricao, gerado.filename, 'application/zip',
+      project.id, formato, descricao, gerado.filename,
+      formato === 'pdf' ? MIME_PDF : MIME_ZIP,
       gerado.buffer.length, gerado.buffer, nowIso(), user.id,
     );
     audit(user.id, 'file.store', 'quote_files', r.lastId, descricao);
-    return download(gerado.filename, gerado.buffer, 'application/zip');
+    return download(gerado.filename, gerado.buffer, formato === 'pdf' ? MIME_PDF : MIME_ZIP);
   });
 }
